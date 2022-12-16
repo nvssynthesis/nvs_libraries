@@ -8,6 +8,13 @@
 
 #pragma once
 #include "nvs_memoryless.h"
+#include "nvs_matrix2x2.h"
+#include <iostream>
+
+#define USING_EIGEN 0
+#if USING_EIGEN // for state space butterworth
+#include <Eigen/Dense>
+#endif
 
 namespace nvs_filters {
 template<typename floatType>
@@ -22,7 +29,7 @@ public:
     virtual void updateResonance(floatType res_target, floatType oneOverBlockSize) = 0;
     floatType cutoff_to_g(floatType cutoff); // could be static
     //==============================================================================
-    nvs_memoryless::trigTables<floatType> trig;
+     nvs_memoryless::trigTables<floatType> trig;
     floatType sampleRate, fs_inv; // why can't these be static?
     floatType _oneOverBlockSize, _cutoffTarget, _resonanceTarget;
     floatType z1; // turn into variable-length array with template<unsigned int>
@@ -54,6 +61,171 @@ private:
     floatType w_c;
 };
 //==============================================================================
+#if !USING_EIGEN
+
+template<typename floatType>
+class butterworth2p :   public filter_abstract<floatType>
+{
+public:
+    butterworth2p() :   butterworth2p(44100.0){}
+    butterworth2p(floatType sample_rate) /*   :   A(2,2), B(2,1), C(1,2), D(1,1), x(2), y(1)*/{
+        this->setSampleRate(sample_rate);
+        clear();
+        A.b = 1.0;
+        B.b = 1.0;
+        D = 0.0;
+        if ((this->trig.tan_table) == NULL){
+            std::cout << "TAN TABLE NULL!\n";
+        }
+    }
+    void clear(){
+        x.a = x.b = 0.f;
+        y = 0.f;
+    }
+    //==============================================================================
+    void updateCutoff() {
+        if (this->_cutoffTarget != this->w_c)
+            this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
+        calcCoefs(this->w_c);
+    }
+    void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize){
+        this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
+        calcCoefs(this->w_c);
+    }
+    void updateResonance(floatType res_target, floatType oneOverBlockSize){std::cout << "butterworth has fixed Q\n";}
+    
+    void calcCoefs(const floatType cutoff){
+//        const floatType fr = this->sampleRate / cutoff;
+//        floatType omega = tan(M_PI / fr);
+        const floatType omega = this->trig.tan_LUT(cutoff / this->sampleRate);
+        const floatType omega2 = omega * omega;
+//        static const floatType cosPiOver4 = 0.707106781186548;
+        const floatType twoCosPiOver4xOmega =  1.414213562373095 * omega;
+        const floatType c = 1.0 + twoCosPiOver4xOmega + omega2;
+        
+        const floatType b0 = omega2 / c;
+        const floatType b1 = 2.0 * b0;
+//        const floatType b2 = b0;
+//        const floatType a0 = 1.0;
+        const floatType a1 = (2.0 * (omega2 - 1.0)) / c;
+        const floatType a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
+        
+        A.c = -a2;
+        A.d = -a1;
+        C.a = b0 - (a2*b0);
+        C.b = b1 - (a1*b0);
+        D = b0;
+    }
+    floatType filter(floatType x_n){
+        using namespace nvs_matrix;
+        y = vec2::crossProduct(C, x);
+        y += D * x_n;
+        x = vec2::add(mat2x2::matXvec(A, x), vec2::scale(B, x_n));
+        
+        return y;
+    }
+    floatType filter(floatType x_n, floatType cutoff){
+        calcCoefs(cutoff);
+        return filter(x_n);
+    }
+
+private:
+    nvs_matrix::mat2x2 A;
+    nvs_matrix::vec2 B;
+    nvs_matrix::vec2 C;
+    floatType D;
+    nvs_matrix::vec2 x;
+    floatType y;
+    
+    floatType b0, b1, b2, a0, a1, a2;
+    floatType w_c;
+};
+#endif
+//==============================================================================
+#if USING_EIGEN
+template<typename floatType>
+class butterworth2p :   public filter_abstract<floatType>
+{
+public:
+    butterworth2p() :   butterworth2p(44100.0){}
+    butterworth2p(floatType sample_rate) /*   :   A(2,2), B(2,1), C(1,2), D(1,1), x(2), y(1)*/{
+        this->setSampleRate(sample_rate);
+        clear();
+        A << 0.0, 1.0, -0.0, -0.0;
+        B << 0.0, 1.0;
+        C << 0.0, 0.0;
+        D << 0.0;
+        if ((this->trig.tan_table) == NULL){
+            std::cout << "TAN TABLE NULL!\n";
+        }
+    }
+    void clear(){
+        x[0] = x[1] = 0.f;
+        y[0] = 0.f;
+    }
+    //==============================================================================
+    void updateCutoff() {
+        if (this->_cutoffTarget != this->w_c)
+            this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
+        calcCoefs(this->w_c);
+    }
+    void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize){
+        this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
+        calcCoefs(this->w_c);
+    }
+    void updateResonance(floatType res_target, floatType oneOverBlockSize){std::cout << "butterworth has fixed Q\n";}    // butterworth has fixed resonance
+    
+    void calcCoefs(const floatType cutoff){
+//        const floatType fr = this->sampleRate / cutoff;
+//        floatType omega = tan(M_PI / fr);
+        const floatType omega = this->trig.tan_LUT(cutoff / this->sampleRate);
+        const floatType omega2 = omega * omega;
+//        static const floatType cosPiOver4 = 0.707106781186548;
+        const floatType twoCosPiOver4xOmega =  1.414213562373095 * omega;
+        const floatType c = 1.0 + twoCosPiOver4xOmega + omega2;
+        
+        const floatType b0 = omega2 / c;
+        const floatType b1 = 2.0 * b0;
+//        const floatType b2 = b0;
+//        const floatType a0 = 1.0;
+        const floatType a1 = (2.0 * (omega2 - 1.0)) / c;
+        const floatType a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
+        
+        A(1,0) = -a2;
+        A(1,1) = -a1;
+        
+        C(0) = b0 - (a2*b0);
+        C(1) = b1 - (a1*b0);
+//        std::cout << C << "\n";
+        D(0) = b0;
+    }
+    floatType filter(floatType x_n){
+        y = C*x + D*x_n;
+        x = A*x + B*x_n;
+        
+        return y[0];
+    }
+    floatType filter(floatType x_n, floatType cutoff){
+        calcCoefs(cutoff);
+        y = C*x + D*x_n;
+        x = A*x + B*x_n;
+        
+        return y[0];
+    }
+
+private:
+//    Eigen::MatrixXd A, B, C, D;
+    Eigen::Matrix<floatType, 2, 2> A;
+    Eigen::Matrix<floatType, 2, 1> B;
+    Eigen::Matrix<floatType, 1, 2> C;
+    Eigen::Matrix<floatType, 1, 1> D;
+//    Eigen::VectorXd x, y;
+    Eigen::Vector<floatType, 2> x;
+    Eigen::Vector<floatType, 1> y;
+    floatType b0, b1, b2, a0, a1, a2;
+    floatType w_c;
+};
+#endif
 
 // NOTHING SO FAR.
 template<typename floatType>
@@ -360,6 +532,8 @@ private:
 
 }   // namespace nvs_filters
 //#include "../src/nvs_filters.cpp"
+
+/*
 namespace nvs_filters {
 template<typename floatType>
 void filter_abstract<floatType>::setSampleRate(floatType sample_rate)
@@ -415,7 +589,7 @@ void onePole<floatType>::updateCutoff(floatType cutoff_target, floatType oneOver
 }
 template<typename floatType>
 void onePole<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
-{/*no resonance for onepole*/}
+{}//no resonance for onepole
 //==============================================================================
 template<typename floatType>
 floatType onePole<floatType>::tpt_lp(floatType input)
@@ -772,8 +946,9 @@ void filter(floatType input)
     // update state
     _state.bp = clamp<floatType>(_outputs.bp, -10.f, 10.f);
     _state.lp = clamp<floatType>(_outputs.lp, -10.f, 10.f);
-}
+} excluded
 */
+/*
 template<typename floatType>
 void svf_lin_naive<floatType>::filter(floatType input)
 {// Erbe version
@@ -802,7 +977,9 @@ void svf_lin_naive<floatType>::filter(floatType input)
  k_2 = h*f(t_n + h/2, y_n + k_1/2)
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
+ excluded
 */
+/*
 template<typename floatType>
 svf_nl_rk<floatType>::svf_nl_rk()
 : _oversample_factor(1), h(0.000022675736961),
@@ -1131,6 +1308,7 @@ floatType CTPTMoogLadderFilter<floatType>::doTPTMoogLPF(floatType xn)
 /*
     time-variant allpass filter
 */
+/*
 template<typename floatType>
 void tvap<floatType>::setSampleRate(floatType sample_rate)
 {
@@ -1205,7 +1383,7 @@ floatType tvap<floatType>::filter(floatType x_n) {
     state.y1 = y_n;
     state.x2 = _x1;
     state.x1 = x_n;
-    return y_n; */
+    return y_n; *//*
     floatType _r1, _r2, _cr1, _cr2, _sr1, _sr2;
     floatType tmp [3];
     _r1 = f_b2r1(f_b);
@@ -1292,3 +1470,4 @@ floatType tvap<floatType>::filter_fbmod(floatType x_n, floatType fb_f_pi, floatT
     return tmp[0];
 }
 } // namespace nvs_filters
+                   */

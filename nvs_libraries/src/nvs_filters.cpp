@@ -5,10 +5,14 @@
     Author:  Nicholas Solem
   ==============================================================================
 */
-#pragma once
+//#pragma once
+#ifndef NVS_FILTERS_H
+#define NVS_FILTERS_H
 #include "../include/nvs_filters.h"
 
 namespace nvs_filters {
+
+
 template<typename floatType>
 void filter_abstract<floatType>::setSampleRate(floatType sample_rate)
 {
@@ -68,7 +72,7 @@ void onePole<floatType>::updateResonance(floatType res_target, floatType oneOver
 template<typename floatType>
 floatType onePole<floatType>::tpt_lp(floatType input)
 {
-    g = cutoff_to_g(this->w_c);
+    g = this->cutoff_to_g(this->w_c);
     v_n = (input - this->z1) * g / (1 + g);
     y_n = v_n + this->z1;
     this->z1 = y_n + v_n;
@@ -102,7 +106,7 @@ fourPole_LP_linear<floatType>::fourPole_LP_linear()
     :   u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
     floatType def_sampRate = (floatType)44100;
-    setSampleRate(def_sampRate);
+    this->setSampleRate(def_sampRate);
     H1.setSampleRate(def_sampRate);
     H2.setSampleRate(def_sampRate);
     H3.setSampleRate(def_sampRate);
@@ -112,7 +116,7 @@ template<typename floatType>
 fourPole_LP_linear<floatType>::fourPole_LP_linear(floatType sample_rate)
     :   u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {       
-    setSampleRate(sample_rate);
+    this->setSampleRate(sample_rate);
     H1.setSampleRate(sample_rate);
     H2.setSampleRate(sample_rate);
     H3.setSampleRate(sample_rate);
@@ -122,7 +126,7 @@ template<typename floatType>
 void fourPole_LP_linear<floatType>::initialize(floatType sample_rate)
 {
     this->clear();
-    setSampleRate(sample_rate);
+    this->setSampleRate(sample_rate);
     H1.setSampleRate(sample_rate);
     H2.setSampleRate(sample_rate);
     H3.setSampleRate(sample_rate);
@@ -187,7 +191,7 @@ void fourPole_LP_linear<floatType>::updateResonance(floatType res_target, floatT
 template<typename floatType>
 floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input)
 {
-    g = cutoff_to_g(this->w_c);
+    g = this->cutoff_to_g(this->w_c);
     floatType g2 = g*g;
     G = g2 * g2;
     s1 = H1.z1;
@@ -205,7 +209,7 @@ floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input)
 template<typename floatType>
 floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input, floatType cutoff)
 {
-    g = cutoff_to_g(cutoff);
+    g = this->cutoff_to_g(cutoff);
     G = g * g * g * g;
     s1 = H1.z1;
     s2 = H2.z1;
@@ -229,7 +233,7 @@ fourPole_LP_nonlinear<floatType>::fourPole_LP_nonlinear()
 u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
     floatType def_sampRate = (floatType)44100;
-    setSampleRate(def_sampRate);
+    this->setSampleRate(def_sampRate);
     H1.setSampleRate(def_sampRate);
     H2.setSampleRate(def_sampRate);
     H3.setSampleRate(def_sampRate);
@@ -240,7 +244,7 @@ fourPole_LP_nonlinear<floatType>::fourPole_LP_nonlinear(floatType sample_rate)
 :   iters(16),
 u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
-    setSampleRate(sample_rate);
+    this->setSampleRate(sample_rate);
     H1.setSampleRate(sample_rate);
     H2.setSampleRate(sample_rate);
     H3.setSampleRate(sample_rate);
@@ -250,7 +254,7 @@ template<typename floatType>
 void fourPole_LP_nonlinear<floatType>::initialize(floatType sample_rate)
 {
     this->clear();
-    setSampleRate(sample_rate);
+    this->setSampleRate(sample_rate);
     H1.setSampleRate(sample_rate);
     H2.setSampleRate(sample_rate);
     H3.setSampleRate(sample_rate);
@@ -315,7 +319,7 @@ void fourPole_LP_nonlinear<floatType>::updateResonance(floatType res_target, flo
 template<typename floatType>
 floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input)
 {
-    g = cutoff_to_g(this->w_c);
+    g = this->cutoff_to_g(this->w_c);
     floatType g2 = g * g;
     G = g2 * g2;
     s1 = H1.z1;
@@ -337,7 +341,7 @@ floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input)
 template<typename floatType>
 floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input, floatType cutoff)
 {
-    g = cutoff_to_g(cutoff);
+    g = this->cutoff_to_g(cutoff);
     floatType g2 = g * g;
     G = g2 * g2;
     s1 = H1.z1;
@@ -424,7 +428,7 @@ void filter(floatType input)
 */
 template<typename floatType>
 void svf_lin_naive<floatType>::filter(floatType input)
-{// Erbe version
+{
     floatType c, d;
     c = 2.f * sin(PI * w_c * this->fs_inv);
     d = 2.f * (1.f - pow(resonance, 0.25f));
@@ -813,7 +817,7 @@ void tvap<floatType>::update_f_b(floatType f_b_target, floatType oneOverBlockSiz
 
 template<typename floatType>
 void tvap<floatType>::calc_b1(void) {
-    floatType d = -1 * cos((2.f * PI * f_pi) / this->sample_rate);
+    floatType d = -1 * cos((2.f * PI * f_pi) / this->sampleRate);
     floatType c = (tan(PI * f_b / this->sampleRate) - 1.f) / (tan(PI * f_b / this->sampleRate) + 1.f);
     floatType r1 = acos(-1.f * c);
     floatType r2 = acos(-1.f * d);
@@ -939,4 +943,33 @@ floatType tvap<floatType>::filter_fbmod(floatType x_n, floatType fb_f_pi, floatT
 
     return tmp[0];
 }
+
+template class filter_abstract<float>;
+template class filter_abstract<double>;
+template class onePole<float>;
+template class onePole<double>;
+template class onePole_nonlinear<float>;
+template class onePole_nonlinear<double>;
+template class fourPole_LP_linear<float>;
+template class fourPole_LP_linear<double>;
+template class fourPole_LP_nonlinear<float>;
+template class fourPole_LP_nonlinear<double>;
+template class svf_prototype<float>;
+template class svf_prototype<double>;
+template class svf_lin_naive<float>;
+template class svf_lin_naive<double>;
+template class svf_nl_rk<float>;
+template class svf_nl_rk<double>;
+template class slewlim<float>;
+template class slewlim<double>;
+template class dcBlock<float>;
+template class dcBlock<double>;
+template class CTPTMoogFilterStage<float>;
+template class CTPTMoogFilterStage<double>;
+template class CTPTMoogLadderFilter<float>;
+template class CTPTMoogLadderFilter<double>;
+template class tvap<float>;
+template class tvap<double>;
 } // namespace nvs_filters
+
+#endif // NVS_FILTERS_H

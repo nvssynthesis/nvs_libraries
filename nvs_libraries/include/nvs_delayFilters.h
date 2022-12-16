@@ -3,7 +3,7 @@
 #include "nvs_memoryless.h"
 
 namespace nvs_delays {
-class delay 
+class delay
 {
 public:
     delay()
@@ -58,7 +58,9 @@ public:
         linear,
         cubic
     };
-
+    inline float getEffectiveDelayTimeSamps(){
+        return delTimeSamps + 1;// > 1.f ? delTimeSamps : 1.f;
+    }
     float (delay::*doTheTick)(float);
     // could also implement by multiplication of 1 or zero with different outputs
     // copy pointer to function and ensure it's really pointing there properly
@@ -69,7 +71,7 @@ public:
     }
     
     float tick_floor(float input) {
-        rHead = wHead + (int)delTimeSamps;
+        rHead = wHead + (int)getEffectiveDelayTimeSamps();
         rHead &= delMask;
         float y = *(delBuff + rHead);
         
@@ -79,8 +81,8 @@ public:
         return y;
     }
     float tick_linear(float input) {
-        rHead = wHead + (int)delTimeSamps;
-        float frac = delTimeSamps - (float)((int)delTimeSamps);
+        rHead = wHead + (int)getEffectiveDelayTimeSamps();
+        float frac = getEffectiveDelayTimeSamps() - (float)((int)getEffectiveDelayTimeSamps());
         rHead &= delMask;
         float y = *(delBuff + rHead) * (1.f - frac);
         int rHeadTmp = rHead + 1;
@@ -93,8 +95,8 @@ public:
         return y;
     }
     float tick_cubic(float input)   {
-        rHead = wHead + (int)delTimeSamps;
-        float frac = delTimeSamps - (float)((int)delTimeSamps);
+        rHead = wHead + (int)getEffectiveDelayTimeSamps();
+        float frac = getEffectiveDelayTimeSamps() - (float)((int)getEffectiveDelayTimeSamps());
 
         float xm1, x0, x1, x2, a, b, c, y;
         xm1 = delBuff[(rHead - 1) & delMask];
@@ -142,6 +144,8 @@ public:
         t = t * 0.001f * sampleRate;
         setDelayTimeSamps(t);
     }
+//    float getDelayTimeMS(){
+//    }
 
     void updateDelayTimeMS(float target, float oneOverBlockSize)
     {
@@ -149,6 +153,7 @@ public:
         float inc = (target - delTimeSamps) * oneOverBlockSize;
         inc = nvs_memoryless::atan_aprox(inc);
         delTimeSamps += inc;
+        
     }
     unsigned int getDelaySize() { return delSize; }
 

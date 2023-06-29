@@ -529,7 +529,7 @@ template<typename floatType>
 void svf_nl_rk<floatType>::filter(floatType input)
 {
     using namespace nvs_memoryless;
-    floatType hp, np;
+    floatType hp(0), np(0);
     // overwritten states. [0] is bp, [1] is lp.
     floatType tempstate[2];
     
@@ -666,16 +666,14 @@ floatType slewlim<floatType>::ASR(floatType gate)
 }
 //=============================================================================
 template<typename floatType>
-dcBlock<floatType>::dcBlock()
-{
-    dcBlock((floatType)44100.0);
-}
+dcBlock<floatType>::dcBlock()   :   dcBlock((floatType)44100.0)
+{}
 template<typename floatType>
 dcBlock<floatType>::dcBlock(floatType sample_rate)
 {
-    this->setSampleRate((floatType) this->sampleRate);
+    this->setSampleRate((floatType)sample_rate);
     clear();
-    R = 0.995;  //fixed R, should base on sample rate instead
+    R = 0.995f;  //fixed R, should base on sample rate instead
 }
 template<typename floatType>
 void dcBlock<floatType>::setSampleRate(floatType sampleRate){
@@ -694,7 +692,7 @@ void dcBlock<floatType>::updateR(floatType R_target, floatType oneOverBlockSize)
 }
 template<typename floatType>
 floatType dcBlock<floatType>::filter(floatType x)
-{
+{// y[i] = x[i] - x[i - 1] + R * y[i - 1];
     yz1 = x - xz1 + R * yz1;
     xz1 = x;
     return yz1;

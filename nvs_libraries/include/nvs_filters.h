@@ -29,7 +29,7 @@ public:
     virtual void updateResonance(floatType res_target, floatType oneOverBlockSize) = 0;
     floatType cutoff_to_g(floatType cutoff); // could be static
     //==============================================================================
-     nvs_memoryless::trigTables<floatType> trig;
+     nvs::memoryless::trigTables<floatType> trig;
     floatType sampleRate, fs_inv; // why can't these be static?
     floatType _oneOverBlockSize, _cutoffTarget, _resonanceTarget;
     floatType z1; // turn into variable-length array with template<unsigned int>
@@ -292,7 +292,7 @@ public:
 //    floatType _resonanceTarget;
 private:
     onePole<floatType> H1, H2, H3, H4;
-    nvs_memoryless::trigTables<floatType> tables;
+    nvs::memoryless::trigTables<floatType> tables;
     int iters;
     floatType u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
     floatType w_c, q;
@@ -512,7 +512,7 @@ public:
     inline floatType unboundSat2(floatType x);
     
     floatType filter_fbmod(floatType x_n, floatType fb_f_pi, floatType fb_f_b);
-    nvs_memoryless::trigTables<floatType> _LUT;
+    nvs::memoryless::trigTables<floatType> _LUT;
     
 protected:
     typedef struct tvapstate {
@@ -935,7 +935,7 @@ void svf_lin_naive<floatType>::updateResonance()
     this->resonance += (this->_resonanceTarget - this->resonance) * this->_oneOverBlockSize;
     this->R = 1.f / this->_resonanceTarget;
 }
-/*
+
 void filter(floatType input)
 {
     using namespace nvs_memoryless;
@@ -968,7 +968,7 @@ void svf_lin_naive<floatType>::filter(floatType input)
 }
 
 //==================================================================================
-/*
+
  nonlinear state-variable filter using fourth-order runge-kutta
  y[n+1] = y[n] + 1/6 * (k_1 + 2*k_2 + 2*k_3 + k_4)
  h = (1 / fs) / oversample_factor
@@ -1305,10 +1305,10 @@ floatType CTPTMoogLadderFilter<floatType>::doTPTMoogLPF(floatType xn)
     return filterOut;
 }
 //==================================================================================
-/*
+
     time-variant allpass filter
-*/
-/*
+
+
 template<typename floatType>
 void tvap<floatType>::setSampleRate(floatType sample_rate)
 {
@@ -1374,7 +1374,7 @@ floatType tvap<floatType>::f_b2r1(floatType _f_b)
 
 template<typename floatType>
 floatType tvap<floatType>::filter(floatType x_n) {
-    /* floatType _y1 = state.y1;
+     floatType _y1 = state.y1;
     floatType _y2 = state.y2;
     floatType _x1 = state.x1;
     floatType _x2 = state.x2;

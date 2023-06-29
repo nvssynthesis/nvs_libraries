@@ -13,7 +13,8 @@
 #define PI      3.141592653589793
 #define TWOPI   6.283185307179586
 
-namespace nvs_memoryless {
+namespace nvs {
+namespace memoryless {
 
 template<typename t>
 void metaparamA(t x, t *y)   {
@@ -242,7 +243,6 @@ public:
             tanh_table[i]= tanh(12 * ((double)(i - (m_size * 0.5)) / (double)m_size));
         }
     }
-    
     t up_sin_LUT(t x) const // unipolar input [0..1] mapped to [-pi..pi]
     {
         x = (clamp<t>(x,0.f,1.f));
@@ -253,7 +253,8 @@ public:
     }
     t bp_sin_LUT(t x) const // bipolar input [-1..1] mapped to [-pi..pi]
     {
-        x = biuni<t>(clamp1<t>(x));
+        x = wrap<t>(x, -1.f, 1.f);
+//x = biuni<t>(clamp1<t>(x));
         t frac = ceil(x) - x;
         return linterp<t>(sin_table[(int)floor(x * m_size)],
                               sin_table[(int)ceil (x * m_size)],
@@ -270,7 +271,7 @@ public:
     t bp_cos_LUT(t x) const // bipolar input [-1..1] mapped to [-pi..pi]
     {
         x = wrap<t>(x, -1.f, 1.f);
-        x = 0.f;
+//        x = 0.f;
         t frac = ceil(x) - x;
         int fl = (int)floor(x * m_size);
         int ce = (int)ceil (x * m_size);
@@ -310,4 +311,5 @@ public:
     double tanh_table[65536];
 };
 
-}
+}   // namespace memoryless
+}   // namespace nvs

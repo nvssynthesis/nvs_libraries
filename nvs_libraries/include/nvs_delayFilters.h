@@ -3,20 +3,9 @@
 #include "nvs_memoryless.h"
 
 namespace nvs_delays {
-class delay
-{
+class delay {
 public:
-    delay()
-    :   sampleRate(44100.f), T(1.f / 44100.f), delSize(8192)
-    {
-        isInitialized = false;
-        delMask = delSize - 1;
-        //delBuff = (float *)malloc(delSize * sizeof(float));
-        delBuff = new float[delSize];
-        wHead = 0;
-        clear();
-        isInitialized = true;
-    }
+    delay() :   delay(8192, 44100.f)    {}
     delay(unsigned int _delSize, float sample_rate)
     {
         isInitialized = false;
@@ -27,15 +16,13 @@ public:
         if (_delSize != 1)
         {
             while (_delSize > 1)  {
-                    _delSize >>= 1;
-                    log2++; }
+                _delSize >>= 1;
+                log2++; }
         }
         _delSize = log2;
-        delSize =  pow(2, _delSize);
+        delSize = pow(2, _delSize);
         delBuff = new float[delSize];
-
         delMask = delSize - 1;
-        //delBuff = (float *)malloc(delSize * sizeof(float));
         wHead = 0;
         sampleRate = sample_rate;
         T = 1.f / sample_rate;
@@ -43,8 +30,6 @@ public:
         isInitialized = true;
     }
     ~delay() {delete[] delBuff;}
-
-
 
     void setSampleRate(float fs)
     {
@@ -181,63 +166,29 @@ private:
 
 class allpass_delay : public delay {
 public:
-    allpass_delay()
-    :   sampleRate(44100.f), T(1.f / 44100.f), delSize(8192), g(0.f), z(0.f)
-    {
-        isInitialized = false;
-        delMask = delSize - 1;
-        //delBuff = (float *)malloc(delSize * sizeof(float));
-        delBuff = new float[delSize];
-        wHead = 0;
-        isInitialized = true;
-    }
+    allpass_delay() :   allpass_delay(8192, 44100.f) {}
     allpass_delay(unsigned int _delSize, float sample_rate)
-    {
-        isInitialized = false;
-        // convert delay size to next power of 2
-        _delSize = (unsigned int)(_delSize + 0.5);
-        unsigned int log2 = 0;
-        if (_delSize == 0) log2 =  13; // gives 8192
-        if (_delSize != 1)
-        {
-            while (_delSize > 1)  {
-                _delSize >>= 1;
-                log2++; }
-        }
-        _delSize = log2;
-        delSize = pow(2, _delSize);
-        delMask = delSize - 1;
-        //delBuff = (float *)malloc(delSize * sizeof(float));
-        delBuff = new float[delSize]; // 1 channel, 1 sample of memory
-        wHead = 0;
-        sampleRate = sample_rate;
-        T = 1.f / sample_rate;
-        
-        isInitialized = true;
-    }
-    ~allpass_delay() {delete[] delBuff;}
+    :  delay(_delSize, sample_rate), g(0.f), z(0.f){}
+    ~allpass_delay() {}
     
     void update_g(float g_target, float oneOverBlockSize)
     {
         g += (g_target - g) * oneOverBlockSize;
     }
-
+    void set_g(float g_target)
+    {
+        g = g_target;
+    }
     float filter(float x_n)
     {
         float u_n, y_n;
-        u_n = x_n + z * g;
-        y_n = -1.f * (tick(u_n) + u_n * g);
-        z = y_n;
+        u_n = x_n + -g * z;
+        y_n = z + g * u_n;
+        z = tick_cubic(u_n);
         return y_n;
     }
 
 private:
-    float delTimeSamps, sampleRate, T;
-    float *delBuff;
-    unsigned int delSize, delMask;
-    unsigned int wHead, rHead;
-    bool isInitialized;
-    
     float g, z;
 };
 }

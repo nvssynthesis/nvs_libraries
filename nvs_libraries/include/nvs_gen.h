@@ -11,7 +11,7 @@
 #pragma once
 #include <array>
 #include <cmath>
-#include "/Users/nicholassolem/development/gitstuff/nvs_libraries/include/nvs_memoryless.h"
+#include "nvs_libraries/include/nvs_memoryless.h"
 
 namespace nvs {
 namespace gen {
@@ -20,12 +20,10 @@ struct phasor {
 private:
 	float phase { 0.f };
 	float phaseDelta {0.f};	// frequency / samplerate
-	float _sampleRate {0.f};
+	float const &_sampleRate;
 public:
-	explicit phasor(float sampleRate)	:	_sampleRate(sampleRate){}
-	inline void setSampleRate(float sr){
-		_sampleRate = sr;
-	}
+	explicit phasor(float const &sampleRate)	:	_sampleRate(sampleRate){}
+
 	inline void setPhase(float ph){
 		phase = ph;
 	}
@@ -176,6 +174,8 @@ struct latch {
 private:
 	T histo {static_cast<T>(0)};
 public:
+	latch(T initial = static_cast<T>(0))
+	:	histo(initial){}
 	T operator()(T x, bool letPass){
 		if (letPass){
 			histo = x;
@@ -257,6 +257,11 @@ float_t parzen(float_t x){
 	return switcher<float>(static_cast<bool>(selector), rsub_10, mul5);
 }
 
+template <typename T>
+T peekBuff(T const *data, size_t index, size_t length){
+	return 0.f;
+}
+
 /*
  Read values from a buffer.
  
@@ -276,10 +281,15 @@ template<size_t numOutputChans, typename float_t = float, typename singleChannel
 struct peek {
 private:
 	typedef std::array<singleChannelBuffer_t const *, numOutputChans> multiChannelBuffer_t;
-	multiChannelBuffer_t buffer;
+	std::array<singleChannelBuffer_t const *, numOutputChans> buffer;
 	
 public:
-	peek(multiChannelBuffer_t ptrsToBuffers)	:	buffer(ptrsToBuffers){}
+	peek(std::array<singleChannelBuffer_t const *, numOutputChans> ptrsToBuffers)
+	:	buffer(ptrsToBuffers){}
+	
+	void replaceBuffer(std::array<singleChannelBuffer_t const *, numOutputChans> newBuffer) {
+		buffer = newBuffer;
+	}
 	
 	enum class boundsModes_e {
 		clamp = 0,
@@ -287,7 +297,7 @@ public:
 	};
 	
 	template<typename index_t>
-	inline index_t clampSample(index_t index, index_t buffLength)const {
+	inline index_t clampSample(index_t index, index_t buffLength) const {
 		return nvs::memoryless::clamp<index_t>(index, 0, buffLength - 1);
 	}
 	template<typename index_t>
@@ -310,13 +320,17 @@ public:
 			}
 		}
 		
-		
 		index_t index_0 = static_cast<index_t>(index);
 		for (int chan = 0; chan < numOutputChans; ++chan){
 			int chan_tmp = nvs::memoryless::clamp<int>(chan + channel_offset, 0, numOutputChans - 1);
 			
 			singleChannelBuffer_t const& thisChannelBuffer = *(buffer[chan_tmp]);
 			
+			if (thisChannelBuffer.size() == 0){
+				channelwiseSamps[chan] = static_cast<float_t>(0.f);
+				continue;
+			}
+		
 			index_t tmp_idx_0;
 			if constexpr (boundsMode == boundsModes_e::clamp){
 				tmp_idx_0 = clampSample<index_t>(index_0, thisChannelBuffer.size());

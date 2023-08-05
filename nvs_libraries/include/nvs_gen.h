@@ -257,9 +257,34 @@ float_t parzen(float_t x){
 	return switcher<float>(static_cast<bool>(selector), rsub_10, mul5);
 }
 
-template <typename T>
+template<typename T>
+inline T wrap(T x, T upperLimit) {
+	while (x < static_cast<T>(0))
+		x += upperLimit;
+	while (x >= upperLimit)
+		x -= upperLimit;
+	return x;
+}
+
+enum class boundsModes_e {
+	clamp = 0,
+	wrap
+};
+
+template <typename T, boundsModes_e b = boundsModes_e::clamp>
 T peekBuff(T const *data, size_t index, size_t length){
-	return 0.f;
+	if (length < 1){
+		return 0.f;
+	}
+	if constexpr (b == boundsModes_e::clamp){
+		index = nvs::memoryless::clamp<size_t>(index, 0, length - 1);
+	}
+	else if constexpr (b == boundsModes_e::wrap){
+		index = wrap(index, length - 1);
+	}
+	assert(index >= 0);
+	assert(index < length);
+	return data[index];
 }
 
 /*
@@ -290,11 +315,6 @@ public:
 	void replaceBuffer(std::array<singleChannelBuffer_t const *, numOutputChans> newBuffer) {
 		buffer = newBuffer;
 	}
-	
-	enum class boundsModes_e {
-		clamp = 0,
-		wrap
-	};
 	
 	template<typename index_t>
 	inline index_t clampSample(index_t index, index_t buffLength) const {

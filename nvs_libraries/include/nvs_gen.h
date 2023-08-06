@@ -40,6 +40,9 @@ public:
 	inline void setFrequency(float frequency){
 		phaseDelta = frequency / _sampleRate;
 	}
+	inline float getFrequency() const {
+		return phaseDelta * _sampleRate;
+	}
 	// prefix increment
 	phasor& operator++(){
 		phase += phaseDelta;

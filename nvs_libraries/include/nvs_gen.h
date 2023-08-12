@@ -244,24 +244,24 @@ T mspWrap(T f){
 	 \ -----------   if (x % 1) >= a
 	  \   1 - a
  */
+#define USING_STD_FMOD 0
+
 template <typename float_t=float, bool assumeBoundedInput=true, bool wrap=false>
 float_t triangle(float_t x, float_t skew = 0.5){
 	// assume input is bounded 0-1
 	if constexpr (!assumeBoundedInput){
-		if constexpr (wrap)
+		if constexpr (wrap) {
 #if USING_STD_FMOD
-		{
 			x = std::fmod(x, 1.f);
 			if (x < 0.f)	// built in fmod does not properly take care of negatives
 				x *= -1.f;
-		} else {	// clamp
+#else
+			x = mspWrap<float>(x);
+#endif
+		} // end wrap
+		else {	// clamp
 			x = nvs::memoryless::clamp<float_t>(x, 0.f, 1.f);
 		}
-#else
-		{
-			x = mspWrap<float>(x);
-		}
-#endif
 	}
 	skew = nvs::memoryless::clamp<float>(skew, 0.000001, 0.99999);
 	if (x < skew)

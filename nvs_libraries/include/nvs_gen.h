@@ -206,7 +206,26 @@ std::array<T, 2> car2pol(T x, T y){
 	return pol;
 }
 
+template<typename T>
+inline T wrap(T x, T upperLimit) {
+	while (x < static_cast<T>(0))
+		x += upperLimit;
+	while (x >= upperLimit)
+		x -= upperLimit;
+	return x;
+}
 
+template<typename T>
+T mspWrap(T f){
+	f = (f > std::numeric_limits<int>::max() || f < std::numeric_limits<int>::min()) ? 0. : f;
+	int k = static_cast<int>(f);
+	T val;
+	if (k <= f)
+		val = f-k;
+	else
+		val = f - (k-1);
+	return val;
+}
 /*
  potentially assymetrical phasor-to-triangle shaper.
  Unipolar output, [0..1], expecting input also [0..1]; however
@@ -229,13 +248,20 @@ template <typename float_t=float, bool assumeBoundedInput=true, bool wrap=false>
 float_t triangle(float_t x, float_t skew = 0.5){
 	// assume input is bounded 0-1
 	if constexpr (!assumeBoundedInput){
-		if constexpr (wrap){
+		if constexpr (wrap)
+#if USING_STD_FMOD
+		{
 			x = std::fmod(x, 1.f);
 			if (x < 0.f)	// built in fmod does not properly take care of negatives
 				x *= -1.f;
 		} else {	// clamp
 			x = nvs::memoryless::clamp<float_t>(x, 0.f, 1.f);
 		}
+#else
+		{
+			x = mspWrap<float>(x);
+		}
+#endif
 	}
 	skew = nvs::memoryless::clamp<float>(skew, 0.000001, 0.99999);
 	if (x < skew)
@@ -260,14 +286,7 @@ float_t parzen(float_t x){
 	return switcher<float>(static_cast<bool>(selector), rsub_10, mul5);
 }
 
-template<typename T>
-inline T wrap(T x, T upperLimit) {
-	while (x < static_cast<T>(0))
-		x += upperLimit;
-	while (x >= upperLimit)
-		x -= upperLimit;
-	return x;
-}
+
 
 enum class boundsModes_e {
 	clamp = 0,
@@ -275,15 +294,15 @@ enum class boundsModes_e {
 };
 
 template <typename T, boundsModes_e b = boundsModes_e::clamp>
-T peekBuff(T const *data, size_t index, size_t length){
+T peekBuff(T const *data, long index, unsigned long length){
 	if (length < 1){
 		return 0.f;
 	}
 	if constexpr (b == boundsModes_e::clamp){
-		index = nvs::memoryless::clamp<size_t>(index, 0, length - 1);
+		index = nvs::memoryless::clamp<long>(index, 0, length - 1);
 	}
 	else if constexpr (b == boundsModes_e::wrap){
-		index = wrap(index, length - 1);
+		index = wrap(index, static_cast<long>(length - 1));
 	}
 	assert(index >= 0);
 	assert(index < length);

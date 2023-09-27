@@ -6,6 +6,14 @@
   ==============================================================================
 */
 
+/**
+ TODO:
+	-optimize tvap:
+		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
+	-remove #include <iostream>
+	**-remove filter_abstract::z1
+ */
+
 #pragma once
 #include "nvs_memoryless.h"
 #include "nvs_matrix2x2.h"
@@ -25,12 +33,26 @@ class filter_abstract{
 public:
 	virtual ~filter_abstract() = 0;
 	//==============================================================================
-	virtual void setSampleRate(floatType sample_rate);
+	virtual void setSampleRate(floatType sample_rate){
+		this->sampleRate = sample_rate;
+		this->fs_inv = 1.f / sample_rate;
+	}
 	virtual void clear() = 0;
 	virtual void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize) = 0;
 	virtual void updateResonance(floatType res_target, floatType oneOverBlockSize) = 0;
-	floatType cutoff_to_g(floatType cutoff); // could be static
-	//==============================================================================
+	floatType cutoff_to_g(floatType cutoff){ // could be static (or free function)
+		//return cutoff * this->fs_inv * 0.5;    // no prewarp
+		//return tan(cutoff * fs_inv * PI);      // expensive prewarp
+		using namespace nvs::memoryless;
+		if ((trig.tan_table) != NULL)
+		{
+			//floatType wc = TWOPI * cutoff;
+			return (floatType)this->trig.tan_LUT(cutoff * fs_inv / 2.f);
+		}
+		else
+			return 0.f;
+	}
+private:
 	nvs::memoryless::trigTables<floatType> trig;
 	floatType sampleRate, fs_inv; // why can't these be static?
 	floatType _oneOverBlockSize, _cutoffTarget, _resonanceTarget;

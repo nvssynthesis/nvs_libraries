@@ -21,28 +21,6 @@ namespace nvs	{
 namespace filters {
 
 template<typename floatType>
-void filter_abstract<floatType>::setSampleRate(floatType sample_rate)
-{
-	this->sampleRate = sample_rate;
-	this->fs_inv = 1.f / sample_rate;
-}  
-template<typename floatType>
-floatType filter_abstract<floatType>::cutoff_to_g(floatType cutoff)
-{
-	//return cutoff * this->fs_inv * 0.5;    // no prewarp
-	//return tan(cutoff * fs_inv * PI);      // expensive prewarp
-	using namespace nvs::memoryless;
-	if ((trig.tan_table) != NULL)
-	{
-		//floatType wc = TWOPI * cutoff;
-		return (floatType)this->trig.tan_LUT(cutoff * fs_inv / 2.f);
-	}
-	else
-		return 0.f;
-}
-//==================================================================================
-
-template<typename floatType>
 onePole<floatType>::onePole()
 // :   z1(0) // member initializer 'z1' does not name a non-static data member or base class
 {

@@ -29,7 +29,7 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     T simple_lfo<T>::phasor() {
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         
         _phase += _freq * fs_inv;
         _phase = mod_1<T>(_phase);
@@ -49,7 +49,7 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     T simple_lfo<T>::sine(){
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         T sinewave = shapes.up_cos_LUT(_phase);
         return sinewave;
     }
@@ -61,7 +61,7 @@ namespace nvssynthesis_lfo {
     // 3 = sine
     template<typename T>
     T simple_lfo<T>::multi(T waveform){
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         waveform = clamp<T>(waveform, 0, 3);
         int selector = (int)(floor(waveform));
         T interpolationAmt = mod_1<T>(waveform);

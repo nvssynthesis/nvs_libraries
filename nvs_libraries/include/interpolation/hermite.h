@@ -25,14 +25,14 @@ inline float hermite2(float x, float y0, float y1, float y2, float y3)
 // james mccartney
 inline float hermite3(float x, float y0, float y1, float y2, float y3)
 {
-        // 4-point, 3rd-order Hermite (x-form)
-        float c0 = y1;
-        float c1 = 0.5f * (y2 - y0);
-        float y0my1 = y0 - y1;
-        float c3 = (y1 - y2) + 0.5f * (y3 - y0my1 - y2);
-        float c2 = y0my1 + c1 - c3;
+    // 4-point, 3rd-order Hermite (x-form)
+    float c0 = y1;
+    float c1 = 0.5f * (y2 - y0);
+    float y0my1 = y0 - y1;
+    float c3 = (y1 - y2) + 0.5f * (y3 - y0my1 - y2);
+    float c2 = y0my1 + c1 - c3;
 
-        return ((c3 * x + c2) * x + c1) * x + c0;
+    return ((c3 * x + c2) * x + c1) * x + c0;
 }
 
 // laurent de soras

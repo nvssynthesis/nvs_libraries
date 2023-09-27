@@ -136,7 +136,7 @@ public:
     {
         target = target * 0.001f * sampleRate; // convert to samples
         float inc = (target - delTimeSamps) * oneOverBlockSize;
-        inc = nvs_memoryless::atan_aprox(inc);
+        inc = nvs::memoryless::atan_aprox(inc);
         delTimeSamps += inc;
         
     }

@@ -45,7 +45,7 @@ namespace nvssynthesis_lfo {
     private:
       T sampleRate, fs_inv;
       T _phase, _lastPhase;
-      static const nvs_memoryless::trigTables<T> shapes;
+      static const nvs::memoryless::trigTables<T> shapes;
   };
 } // namespace nvssynthesis_lfo
 

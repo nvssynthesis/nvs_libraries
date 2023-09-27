@@ -107,10 +107,8 @@ public:
 			val = 1;//static_cast<T>(1);
 		else if (x < histo)
 			val = -1;//static_cast<T>(-1);
-		else if (x == histo)
+		else // (x == histo)
 			val = 0;//static_cast<T>(0);
-		else
-			assert(false);
 
 		histo = x;
 		return val;
@@ -250,7 +248,8 @@ template <typename float_t=float, bool assumeBoundedInput=true, bool wrap=false>
 float_t triangle(float_t x, float_t skew = 0.5){
 	// assume input is bounded 0-1
 	if constexpr (!assumeBoundedInput){
-		if constexpr (wrap) {
+		if constexpr (wrap)
+		{
 #if USING_STD_FMOD
 			x = std::fmod(x, 1.f);
 			if (x < 0.f)	// built in fmod does not properly take care of negatives
@@ -286,18 +285,17 @@ float_t parzen(float_t x){
 	return switcher<float>(static_cast<bool>(selector), rsub_10, mul5);
 }
 
-
-
 enum class boundsModes_e {
 	clamp = 0,
 	wrap
 };
 
-template <typename T, boundsModes_e b = boundsModes_e::clamp>
-T peekBuff(T const *data, long index, unsigned long length){
-	if (length < 1){
-		return 0.f;
-	}
+template <typename T, boundsModes_e b=boundsModes_e::clamp>
+T readBuff(T const *data, long index, unsigned long length){
+//	if (length < 1){
+//		return 0.f;
+//	}
+	assert(length > 0);
 	if constexpr (b == boundsModes_e::clamp){
 		index = nvs::memoryless::clamp<long>(index, 0, length - 1);
 	}
@@ -309,6 +307,50 @@ T peekBuff(T const *data, long index, unsigned long length){
 	return data[index];
 }
 
+enum class interpolationModes_e {
+	floor,
+	linear,
+	hermite
+};
+
+// laurent de soras
+template<typename float_t>
+inline float_t hermite(float_t frac_pos, float_t xm1, float_t x0, float_t x1, float_t x2)
+{
+   const float_t    c     = (x1 - xm1) * 0.5f;
+   const float_t    v     = x0 - x1;
+   const float_t    w     = c + v;
+   const float_t    a     = w + v + (x2 - x0) * 0.5f;
+   const float_t    b_neg = w + a;
+
+   return ((((a * frac_pos) - b_neg) * frac_pos + c) * frac_pos + x0);
+}
+
+template <typename T, interpolationModes_e interp=interpolationModes_e::linear, boundsModes_e b=boundsModes_e::clamp>
+inline T peek(T const *data, double fracIndex, unsigned long length){
+	
+	long iidx = static_cast<long>(fracIndex);
+	T const x0 = readBuff<T, b>(data, iidx, length);
+	
+	if constexpr (interp == interpolationModes_e::floor){
+		return x0;
+	}
+	
+	double const frac = fracIndex - static_cast<double>(iidx);
+	T const x1 = readBuff<T, b>(data, iidx + 1, length);
+	
+	if constexpr (interp == interpolationModes_e::linear){
+		return (1.0 - frac)*x0 + (frac)*x1;
+	}
+	else if constexpr (interp == interpolationModes_e::hermite){
+		T const xm1 = readBuff<T, b>(data, iidx - 1, length);
+		T const x2 = readBuff<T, b>(data, iidx + 2, length);
+		return hermite(static_cast<T>(frac), xm1, x0, x1, x2);
+	}
+	assert(false);
+}
+
+#if 0
 /*
  Read values from a buffer.
  
@@ -395,6 +437,7 @@ public:
 		return sizes;
 	}
 };
+#endif
 
 }	// namespace gen
 }	// namespace nvs

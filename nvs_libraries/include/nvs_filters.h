@@ -20,7 +20,7 @@
 #include <iostream>
 
 #define USING_EIGEN 0
-#if USING_EIGEN // for state space butterworth
+#if USING_EIGEN	// for state space butterworth
 #include <Eigen/Dense>
 #endif
 

@@ -12,7 +12,7 @@
 		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
 	-remove #include <iostream>
 	**-remove filter_abstract::z1
- */
+ */ 
 
 #pragma once
 #include "nvs_memoryless.h"

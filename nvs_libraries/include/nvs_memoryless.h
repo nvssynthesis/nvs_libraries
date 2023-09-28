@@ -17,6 +17,7 @@ namespace nvs {
 namespace memoryless {
 
 template<typename t>
+[[deprecated]]
 void metaparamA(t x, t *y)   {
     // y should be a 2-component array
     
@@ -31,10 +32,6 @@ void metaparamA(t x, t *y)   {
     }
 }
 
-template <typename t>
-void metaparamB(t x, t *y0, t *y1){
-
-}
 
 // linear interpolate. does not check for fade being between 0 and 1.
 template<typename t>

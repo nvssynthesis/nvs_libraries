@@ -7,22 +7,19 @@
 */
 
 /**
- TODO:
+ ***TODO:
 	-optimize tvap:
 		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
 	-remove #include <iostream>
-	**-remove filter_abstract::z1
- */ 
+**	-remove filter_abstract::z1
+	-make lookup tables static
+	-make lookup tables constexpr (really in nvs_memoryless)
+ */
 
 #pragma once
 #include "nvs_memoryless.h"
 #include "nvs_matrix2x2.h"
 #include <iostream>
-
-#define USING_EIGEN 0
-#if USING_EIGEN	// for state space butterworth
-#include <Eigen/Dense>
-#endif
 
 namespace nvs	{
 namespace filters {
@@ -52,10 +49,10 @@ public:
 		else
 			return 0.f;
 	}
-private:
+protected:
 	nvs::memoryless::trigTables<floatType> trig;
 	floatType sampleRate, fs_inv; // why can't these be static?
-	floatType _oneOverBlockSize, _cutoffTarget, _resonanceTarget;
+	floatType _cutoffTarget, _resonanceTarget;
 	floatType z1; // turn into variable-length array with template<unsigned int>
 };
 template<typename floatType>
@@ -85,7 +82,6 @@ private:
 	floatType w_c;
 };
 //==============================================================================
-#if !USING_EIGEN
 
 template<typename floatType>
 class butterworth2p :   public filter_abstract<floatType>
@@ -164,92 +160,6 @@ private:
 	floatType b0, b1, b2, a0, a1, a2;
 	floatType w_c;
 };
-#endif
-//==============================================================================
-#if USING_EIGEN
-template<typename floatType>
-class butterworth2p :   public filter_abstract<floatType>
-{
-public:
-	butterworth2p() :   butterworth2p(44100.0){}
-	butterworth2p(floatType sample_rate) /*   :   A(2,2), B(2,1), C(1,2), D(1,1), x(2), y(1)*/{
-		this->setSampleRate(sample_rate);
-		clear();
-		A << 0.0, 1.0, -0.0, -0.0;
-		B << 0.0, 1.0;
-		C << 0.0, 0.0;
-		D << 0.0;
-		if ((this->trig.tan_table) == NULL){
-			std::cout << "TAN TABLE NULL!\n";
-		}
-	}
-	void clear(){
-		x[0] = x[1] = 0.f;
-		y[0] = 0.f;
-	}
-	//==============================================================================
-	void updateCutoff() {
-		if (this->_cutoffTarget != this->w_c)
-			this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
-		calcCoefs(this->w_c);
-	}
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize){
-		this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-		calcCoefs(this->w_c);
-	}
-	void updateResonance(floatType res_target, floatType oneOverBlockSize){std::cout << "butterworth has fixed Q\n";}    // butterworth has fixed resonance
-	
-	void calcCoefs(const floatType cutoff){
-		//        const floatType fr = this->sampleRate / cutoff;
-		//        floatType omega = tan(M_PI / fr);
-		const floatType omega = this->trig.tan_LUT(cutoff / this->sampleRate);
-		const floatType omega2 = omega * omega;
-		//        static const floatType cosPiOver4 = 0.707106781186548;
-		const floatType twoCosPiOver4xOmega =  1.414213562373095 * omega;
-		const floatType c = 1.0 + twoCosPiOver4xOmega + omega2;
-		
-		const floatType b0 = omega2 / c;
-		const floatType b1 = 2.0 * b0;
-		//        const floatType b2 = b0;
-		//        const floatType a0 = 1.0;
-		const floatType a1 = (2.0 * (omega2 - 1.0)) / c;
-		const floatType a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
-		
-		A(1,0) = -a2;
-		A(1,1) = -a1;
-		
-		C(0) = b0 - (a2*b0);
-		C(1) = b1 - (a1*b0);
-		//        std::cout << C << "\n";
-		D(0) = b0;
-	}
-	floatType filter(floatType x_n){
-		y = C*x + D*x_n;
-		x = A*x + B*x_n;
-		
-		return y[0];
-	}
-	floatType filter(floatType x_n, floatType cutoff){
-		calcCoefs(cutoff);
-		y = C*x + D*x_n;
-		x = A*x + B*x_n;
-		
-		return y[0];
-	}
-	
-private:
-	//    Eigen::MatrixXd A, B, C, D;
-	Eigen::Matrix<floatType, 2, 2> A;
-	Eigen::Matrix<floatType, 2, 1> B;
-	Eigen::Matrix<floatType, 1, 2> C;
-	Eigen::Matrix<floatType, 1, 1> D;
-	//    Eigen::VectorXd x, y;
-	Eigen::Vector<floatType, 2> x;
-	Eigen::Vector<floatType, 1> y;
-	floatType b0, b1, b2, a0, a1, a2;
-	floatType w_c;
-};
-#endif
 
 // NOTHING SO FAR.
 template<typename floatType>

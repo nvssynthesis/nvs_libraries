@@ -77,11 +77,19 @@ public:
 	virtual void setCutoffTarget(float_t cutoff_target){
 		_cutoffTarget = cutoff_target;
 	}
+	virtual void setCutoff(float_t cutoff){
+		_w_c = cutoff;
+		setCutoffTarget(cutoff);
+	}
 	virtual void updateCutoff(){
 		_w_c += (_cutoffTarget - _w_c) * _blockSize_inv;
 	}
 	virtual void setResonanceTarget(float_t res_target){
 		_resonanceTarget = res_target;
+	}
+	virtual void setResonance(float_t res){
+		_q = res;
+		setResonanceTarget(res);
 	}
 	virtual void updateResonance(){
 		_q += (_resonanceTarget - _q) * _blockSize_inv;
@@ -120,7 +128,7 @@ public:
 	//==============================================================================
 	
 	float_t tpt_lp(float_t input){
-		g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		auto const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
 		v_n = (input - this->z1) * g / (1.0 + g);
 		y_n = v_n + this->z1;
 		this->z1 = y_n + v_n;
@@ -151,14 +159,218 @@ public:
 		 */
 		return tpt_lp(input, cutoff);
 	}
+	float_t getState(){
+		return z1;
+	}
 private:
 	float_t v_n {0.0}, y_n {0.0}, z1 {0.0};
-	float_t g {0.0};
-	
-	template<typename T>
-	friend class fourPole_LP_linear;
 };
 //==============================================================================
+
+// NOTHING SO FAR.
+template<typename float_t>
+class onePole_nonlinear_df2   :   public filter_abstract<float_t>
+{
+public:
+	void clear() override {
+		v_n = z1 = 0.0;
+	}
+	//=========================================================================
+	/* a one pole filter has no resonance. */
+	virtual void setResonanceTarget(float_t) override {}
+	virtual void updateResonance() override {}
+	//=========================================================================
+	float_t operator()(float_t input) override {
+		auto g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		auto x_n = input * g;
+		v_n = x_n + z1;
+		auto y_n = tanh(v_n);
+		z1 = x_n + y_n;
+		return y_n;
+	}
+	float_t operator()(float_t input, float_t cutoff) override {
+		this->filter_abstract<float_t>::setCutoff(cutoff);
+		return operator()(input);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t) override {
+		/*
+		 is there a way to warn upon calling a function? but i do not want to deprecate this
+		 because it could have some use for generic interfaces
+		 */
+		return operator()(input, cutoff);
+	}
+	float_t getState(){
+		return z1;
+	}
+private:
+	float_t v_n {0.0}, z1 {0.0};
+};
+
+template<typename float_t>
+class fourPole_LP_linear    :   public filter_abstract<float_t>
+{
+public:
+	virtual void setSampleRate(float_t sample_rate) override {
+		this->filter_abstract<float_t>::setSampleRate(sample_rate);
+		for (auto &pole : _poles){
+			pole.setSampleRate(sample_rate);
+		}
+	}
+	virtual void setBlockSize(size_t blockSize) override {
+		this->filter_abstract<float_t>::setBlockSize(blockSize);
+		for (auto &pole : _poles){
+			pole.setBlockSize(blockSize);
+		}
+	}
+	virtual void clear() override {
+		for (auto &pole : _poles){
+			pole.clear();
+		}
+	}
+	virtual void setCutoffTarget(float_t cutoff_target) override
+	{
+		this->filter_abstract<float_t>::setCutoffTarget(cutoff_target);
+		for (auto &pole : _poles){
+			pole.setCutoffTarget(cutoff_target);
+		}
+	}
+	void updateCutoff() override {
+		this->filter_abstract<float_t>::updateCutoff();
+		for (auto &pole : _poles){
+			pole.updateCutoff();
+		}
+	}
+	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
+	
+	float_t tpt_fourpole(float_t input){
+		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		float_t const g2 = g*g;
+		float_t const G = g2 * g2;
+		float_t const s1 = _poles[0].getState();
+		float_t const s2 = _poles[1].getState();
+		float_t const s3 = _poles[2].getState();
+		float_t const s4 = _poles[3].getState();
+		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
+		
+		float_t const u_n = ((input) * (1 + this->_q) - this->_q * S) / (1 + this->_q * G);
+		
+		float_t y_n = _poles[3].tpt_lp
+						(_poles[2].tpt_lp
+							(_poles[1].tpt_lp
+								(_poles[0].tpt_lp
+									(u_n)
+								 )
+							 )
+						 );
+		
+		return y_n;
+	}
+	float_t operator()(float_t input) override {
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff) override
+	{
+		this->_w_c = cutoff;
+		for (auto & p : _poles){
+			p.setCutoff(cutoff);
+		}
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t reso) override
+	{
+		this->_q = reso;
+		return operator()(input, cutoff);
+	}
+private:
+	std::array<onePole<float_t>, 4> _poles;
+};
+
+// so far quite tame, since the only nonlinearity is in the feedback path. 
+// TODO: convert each onepole into a nonlinear onepole
+template<typename float_t, class onePole_t=onePole<float_t>, size_t N_iters=16>
+class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
+{
+public:
+	virtual void setSampleRate(float_t sample_rate) override {
+		this->filter_abstract<float_t>::setSampleRate(sample_rate);
+		for (auto &pole : _poles){
+			pole.setSampleRate(sample_rate);
+		}
+	}
+	virtual void setBlockSize(size_t blockSize) override {
+		this->filter_abstract<float_t>::setBlockSize(blockSize);
+		for (auto &pole : _poles){
+			pole.setBlockSize(blockSize);
+		}
+	}
+	virtual void clear() override {
+		for (auto &pole : _poles){
+			pole.clear();
+		}
+	}
+	virtual void setCutoffTarget(float_t cutoff_target) override
+	{
+		this->filter_abstract<float_t>::setCutoffTarget(cutoff_target);
+		for (auto &pole : _poles){
+			pole.setCutoffTarget(cutoff_target);
+		}
+	}
+	void updateCutoff() override {
+		this->filter_abstract<float_t>::updateCutoff();
+		for (auto &pole : _poles){
+			pole.updateCutoff();
+		}
+	}
+	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
+	
+	float_t tpt_fourpole(float_t input){
+		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		float_t const g2 = g*g;
+		float_t const G = g2 * g2;
+		float_t const s1 = _poles[0].getState();
+		float_t const s2 = _poles[1].getState();
+		float_t const s3 = _poles[2].getState();
+		float_t const s4 = _poles[3].getState();
+		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
+		
+		u_n = y_n;  // initial estimation
+		for (auto n = 0; n < N_iters; n++){
+			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
+			u_n = input - this->_q * (G * tanh(tmp) + S);
+		}
+		y_n = _poles[3]
+					(_poles[2]
+						(_poles[1]
+							(_poles[0]
+								(u_n)
+							 )
+						 )
+					 );
+		
+		y_n = tanh(y_n);
+		return y_n;
+	}
+	float_t operator()(float_t input) override {
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff) override
+	{
+		this->_w_c = cutoff;
+		for (auto & p : _poles){
+			p.setCutoff(cutoff);
+		}
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t reso) override
+	{
+		this->_q = reso;
+		return operator()(input, cutoff);
+	}
+private:
+	std::array<onePole_t, 4> _poles;
+	float_t u_n, y_n;
+};
+
 
 /**
  TODO:
@@ -230,121 +442,6 @@ private:
 	float_t y;
 };
 
-// NOTHING SO FAR.
-template<typename float_t>
-class onePole_nonlinear   :   public onePole<float_t>
-{
-public:
-private:
-};
-
-template<typename float_t>
-class fourPole_LP_linear    :   public filter_abstract<float_t>
-{
-public:
-	virtual void setSampleRate(float_t sample_rate) override {
-		this->filter_abstract<float_t>::setSampleRate(sample_rate);
-		for (auto &pole : _poles){
-			pole.setSampleRate(sample_rate);
-		}
-	}
-	virtual void setBlockSize(size_t blockSize) override {
-		this->filter_abstract<float_t>::setBlockSize(blockSize);
-		for (auto &pole : _poles){
-			pole.setBlockSize(blockSize);
-		}
-	}
-	virtual void clear() override {
-		for (auto &pole : _poles){
-			pole.clear();
-		}
-	}
-	virtual void setCutoffTarget(float_t cutoff_target) override
-	{
-		this->filter_abstract<float_t>::setCutoffTarget(cutoff_target);
-		for (auto &pole : _poles){
-			pole.setCutoffTarget(cutoff_target);
-		}
-	}
-	void updateCutoff() override {
-		this->filter_abstract<float_t>::updateCutoff();
-		for (auto &pole : _poles){
-			pole.updateCutoff();
-		}
-	}
-	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
-	
-	float_t tpt_fourpole(float_t input){
-		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
-		float_t const g2 = g*g;
-		float_t const G = g2 * g2;
-		float_t const s1 = _poles[0].z1;
-		float_t const s2 = _poles[1].z1;
-		float_t const s3 = _poles[2].z1;
-		float_t const s4 = _poles[3].z1;
-		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
-		
-		float_t const u_n = ((input) * (1 + this->_q) - this->_q * S) / (1 + this->_q * G);
-		
-		float_t y_n = _poles[3].tpt_lp
-						(_poles[2].tpt_lp
-							(_poles[1].tpt_lp
-								(_poles[0].tpt_lp
-									(u_n)
-								 )
-							 )
-						 );
-		
-		return y_n;
-	}
-	float_t operator()(float_t input) override {
-		return tpt_fourpole(input);
-	}
-	float_t operator()(float_t input, float_t cutoff) override
-	{
-		this->_w_c = cutoff;
-		for (auto & p : _poles){
-			p._w_c = cutoff;
-		}
-		return tpt_fourpole(input);
-	}
-	float_t operator()(float_t input, float_t cutoff, float_t reso) override
-	{
-		this->_q = reso;
-		return operator()(input, cutoff);
-	}
-private:
-	std::array<onePole<float_t>, 4> _poles;
-};
-
-// so far quite tame, since the only nonlinearity is in the feedback path. 
-// TODO: convert each onepole into a nonlinear onepole
-template<typename float_t>
-class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
-{
-public:
-	fourPole_LP_nonlinear();
-	fourPole_LP_nonlinear(float_t sample_rate);
-	void initialize(float_t sample_rate);
-	void updateOneOverBlockSize(float_t oneOverBlockSize);
-	void clear();
-	void updateCutoff();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	
-	void updateResonance();
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
-	
-	
-	float_t tpt_fourpole(float_t input);
-	float_t tpt_fourpole(float_t input, float_t cutoff);
-	//    float_t _resonanceTarget;
-private:
-	onePole<float_t> H1, H2, H3, H4;
-	nvs::memoryless::trigTables<float_t> tables;
-	int iters;
-	float_t u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
-	float_t w_c, q;
-};
 
 template<typename float_t>
 class svf_prototype

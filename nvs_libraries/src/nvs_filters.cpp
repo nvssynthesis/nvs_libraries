@@ -20,85 +20,20 @@
 namespace nvs	{
 namespace filters {
 
-template<typename floatType>
-onePole<floatType>::onePole()
-// :   z1(0) // member initializer 'z1' does not name a non-static data member or base class
-{
-	this->setSampleRate(44100.f);
-	this->z1 = 0.0;
-}
-template<typename floatType>
-onePole<floatType>::onePole(floatType sample_rate)
-{
-	this->setSampleRate(sample_rate);
-	this->z1 = 0.0;
-}
-template<typename floatType>
-void onePole<floatType>::clear()
-{
-	y_n = v_n = this->z1 = 0.0;
-}
 //==============================================================================
-template<typename floatType>
-void onePole<floatType>::updateCutoff()
-{
-	if (this->_cutoffTarget != w_c)
-		this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
-}
-template<typename floatType>
-void onePole<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize)
-{
-	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-}
-template<typename floatType>
-void onePole<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
-{/*no resonance for onepole*/}
-//==============================================================================
-template<typename floatType>
-floatType onePole<floatType>::tpt_lp(floatType input)
-{
-	g = this->cutoff_to_g(this->w_c);
-	v_n = (input - this->z1) * g / (1 + g);
-	y_n = v_n + this->z1;
-	this->z1 = y_n + v_n;
-	// cliptest
-	return nvs::memoryless::clamp<floatType>(y_n, -1000.f, 1000.f);
-}
-template<typename floatType>
-floatType onePole<floatType>::tpt_lp(floatType input, floatType cutoff)
-{
-	g = this->cutoff_to_g(cutoff);
-	v_n = (input - this->z1) * g / (1 + g);
-	y_n = v_n + this->z1;
-	this->z1 = y_n + v_n;
-	// cliptest
-	return nvs::memoryless::clamp<floatType>(y_n, -1000.f, 1000.f);
-}
-template<typename floatType>
-floatType onePole<floatType>::tpt_hp(floatType input)
-{
-	return input - tpt_lp(input);
-}
-template<typename floatType>
-floatType onePole<floatType>::tpt_hp(floatType input, floatType cutoff)
-{
-	return input - tpt_lp(input, cutoff);
-}
-
-//==============================================================================
-template<typename floatType>
-fourPole_LP_linear<floatType>::fourPole_LP_linear()
+template<typename float_t>
+fourPole_LP_linear<float_t>::fourPole_LP_linear()
 :   u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
-	floatType def_sampRate = (floatType)44100;
+	float_t def_sampRate = (float_t)44100;
 	this->setSampleRate(def_sampRate);
 	H1.setSampleRate(def_sampRate);
 	H2.setSampleRate(def_sampRate);
 	H3.setSampleRate(def_sampRate);
 	H4.setSampleRate(def_sampRate);
 }
-template<typename floatType>
-fourPole_LP_linear<floatType>::fourPole_LP_linear(floatType sample_rate)
+template<typename float_t>
+fourPole_LP_linear<float_t>::fourPole_LP_linear(float_t sample_rate)
 :   u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {       
 	this->setSampleRate(sample_rate);
@@ -107,8 +42,8 @@ fourPole_LP_linear<floatType>::fourPole_LP_linear(floatType sample_rate)
 	H3.setSampleRate(sample_rate);
 	H4.setSampleRate(sample_rate);
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::initialize(floatType sample_rate)
+template<typename float_t>
+void fourPole_LP_linear<float_t>::initialize(float_t sample_rate)
 {
 	this->clear();
 	this->setSampleRate(sample_rate);
@@ -117,8 +52,8 @@ void fourPole_LP_linear<floatType>::initialize(floatType sample_rate)
 	H3.setSampleRate(sample_rate);
 	H4.setSampleRate(sample_rate);
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::updateOneOverBlockSize(floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_linear<float_t>::updateOneOverBlockSize(float_t oneOverBlockSize)
 {
 	this->_oneOverBlockSize = oneOverBlockSize;
 	H1._oneOverBlockSize = oneOverBlockSize;
@@ -126,8 +61,8 @@ void fourPole_LP_linear<floatType>::updateOneOverBlockSize(floatType oneOverBloc
 	H3._oneOverBlockSize = oneOverBlockSize;
 	H4._oneOverBlockSize = oneOverBlockSize;
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::clear()
+template<typename float_t>
+void fourPole_LP_linear<float_t>::clear()
 {
 	H1.clear();
 	H2.clear();
@@ -135,10 +70,10 @@ void fourPole_LP_linear<floatType>::clear()
 	H4.clear();
 	s1 = s2 = s3 = s4 = u_n = y_n = S = 0.f;
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::updateCutoff()
+template<typename float_t>
+void fourPole_LP_linear<float_t>::updateCutoff()
 {
-	floatType local_cutoff = this->w_c;
+	float_t local_cutoff = this->w_c;
 	if (this->_cutoffTarget != local_cutoff)
 	{
 		this->w_c += (this->_cutoffTarget - local_cutoff) * this->_oneOverBlockSize;
@@ -152,8 +87,8 @@ void fourPole_LP_linear<floatType>::updateCutoff()
 		H4.updateCutoff();
 	}
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_linear<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
 {
 	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
 	H1.updateCutoff(cutoff_target, oneOverBlockSize);
@@ -161,23 +96,23 @@ void fourPole_LP_linear<floatType>::updateCutoff(floatType cutoff_target, floatT
 	H3.updateCutoff(cutoff_target, oneOverBlockSize);
 	H4.updateCutoff(cutoff_target, oneOverBlockSize);
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::updateResonance()
+template<typename float_t>
+void fourPole_LP_linear<float_t>::updateResonance()
 {
 	if (_resonanceTarget != k)
 		this->k += (this->_resonanceTarget - this->k) * this->_oneOverBlockSize;
 }
-template<typename floatType>
-void fourPole_LP_linear<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_linear<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
 {
 	//this->q += (res_target - this->q) * oneOverBlockSize;
 	this->k += (res_target - this->k) * oneOverBlockSize;
 }
-template<typename floatType>
-floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input)
+template<typename float_t>
+float_t fourPole_LP_linear<float_t>::tpt_fourpole(float_t input)
 {
 	g = this->cutoff_to_g(this->w_c);
-	floatType g2 = g*g;
+	float_t g2 = g*g;
 	G = g2 * g2;
 	s1 = H1.z1;
 	s2 = H2.z1;
@@ -191,8 +126,8 @@ floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input)
 	
 	return y_n;
 }
-template<typename floatType>
-floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input, floatType cutoff)
+template<typename float_t>
+float_t fourPole_LP_linear<float_t>::tpt_fourpole(float_t input, float_t cutoff)
 {
 	g = this->cutoff_to_g(cutoff);
 	G = g * g * g * g;
@@ -200,7 +135,7 @@ floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input, floatType
 	s2 = H2.z1;
 	s3 = H3.z1;
 	s4 = H4.z1;
-	floatType g2 = g*g;
+	float_t g2 = g*g;
 	S = g2*g*s1 + g2*s2 + g*s3 + s4;
 	
 	u_n = ((input) * (1 + k) - k * S) / (1 + k * G);
@@ -212,20 +147,20 @@ floatType fourPole_LP_linear<floatType>::tpt_fourpole(floatType input, floatType
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 
 // TODO: convert each onepole into a nonlinear onepole
-template<typename floatType>
-fourPole_LP_nonlinear<floatType>::fourPole_LP_nonlinear()
+template<typename float_t>
+fourPole_LP_nonlinear<float_t>::fourPole_LP_nonlinear()
 :   iters(16),
 u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
-	floatType def_sampRate = (floatType)44100;
+	float_t def_sampRate = (float_t)44100;
 	this->setSampleRate(def_sampRate);
 	H1.setSampleRate(def_sampRate);
 	H2.setSampleRate(def_sampRate);
 	H3.setSampleRate(def_sampRate);
 	H4.setSampleRate(def_sampRate);
 }
-template<typename floatType>
-fourPole_LP_nonlinear<floatType>::fourPole_LP_nonlinear(floatType sample_rate)
+template<typename float_t>
+fourPole_LP_nonlinear<float_t>::fourPole_LP_nonlinear(float_t sample_rate)
 :   iters(16),
 u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
 {
@@ -235,8 +170,8 @@ u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f),
 	H3.setSampleRate(sample_rate);
 	H4.setSampleRate(sample_rate);
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::initialize(floatType sample_rate)
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::initialize(float_t sample_rate)
 {
 	this->clear();
 	this->setSampleRate(sample_rate);
@@ -245,8 +180,8 @@ void fourPole_LP_nonlinear<floatType>::initialize(floatType sample_rate)
 	H3.setSampleRate(sample_rate);
 	H4.setSampleRate(sample_rate);
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::updateOneOverBlockSize(floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::updateOneOverBlockSize(float_t oneOverBlockSize)
 {
 	this->_oneOverBlockSize = oneOverBlockSize;
 	H1._oneOverBlockSize = oneOverBlockSize;
@@ -254,8 +189,8 @@ void fourPole_LP_nonlinear<floatType>::updateOneOverBlockSize(floatType oneOverB
 	H3._oneOverBlockSize = oneOverBlockSize;
 	H4._oneOverBlockSize = oneOverBlockSize;
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::clear()
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::clear()
 {
 	H1.clear();
 	H2.clear();
@@ -263,10 +198,10 @@ void fourPole_LP_nonlinear<floatType>::clear()
 	H4.clear();
 	s1 = s2 = s3 = s4 = u_n = y_n = S = 0.f;
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::updateCutoff()
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::updateCutoff()
 {
-	floatType local_cutoff = this->w_c;
+	float_t local_cutoff = this->w_c;
 	if (this->_cutoffTarget != local_cutoff)
 	{
 		this->w_c += (this->_cutoffTarget - local_cutoff) * this->_oneOverBlockSize;
@@ -280,8 +215,8 @@ void fourPole_LP_nonlinear<floatType>::updateCutoff()
 		H4.updateCutoff();
 	}
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
 {
 	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
 	H1.updateCutoff(cutoff_target, oneOverBlockSize);
@@ -289,23 +224,23 @@ void fourPole_LP_nonlinear<floatType>::updateCutoff(floatType cutoff_target, flo
 	H3.updateCutoff(cutoff_target, oneOverBlockSize);
 	H4.updateCutoff(cutoff_target, oneOverBlockSize);
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::updateResonance()
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::updateResonance()
 {
 	if (this->_resonanceTarget != k)
 		this->k += (this->_resonanceTarget - this->k) * this->_oneOverBlockSize;
 }
-template<typename floatType>
-void fourPole_LP_nonlinear<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
+template<typename float_t>
+void fourPole_LP_nonlinear<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
 {
 	//this->q += (res_target - this->q) * oneOverBlockSize;
 	this->k += (res_target - this->k) * oneOverBlockSize;
 }
-template<typename floatType>
-floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input)
+template<typename float_t>
+float_t fourPole_LP_nonlinear<float_t>::tpt_fourpole(float_t input)
 {
 	g = this->cutoff_to_g(this->w_c);
-	floatType g2 = g * g;
+	float_t g2 = g * g;
 	G = g2 * g2;
 	s1 = H1.z1;
 	s2 = H2.z1;
@@ -323,11 +258,11 @@ floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input)
 	
 	return y_n;
 }
-template<typename floatType>
-floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input, floatType cutoff)
+template<typename float_t>
+float_t fourPole_LP_nonlinear<float_t>::tpt_fourpole(float_t input, float_t cutoff)
 {
 	g = this->cutoff_to_g(cutoff);
-	floatType g2 = g * g;
+	float_t g2 = g * g;
 	G = g2 * g2;
 	s1 = H1.z1;
 	s2 = H2.z1;
@@ -344,44 +279,44 @@ floatType fourPole_LP_nonlinear<floatType>::tpt_fourpole(floatType input, floatT
 
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 //==============================================================================
-template<typename floatType>
-svf_lin_naive<floatType>::svf_lin_naive() 
+template<typename float_t>
+svf_lin_naive<float_t>::svf_lin_naive()
 :   w_c(200.f), R(1.f), resonance(1.f)
 {
 	this->sampleRate = 44100.f;
 	this->fs_inv = 1.f / this->sampleRate;
 	clear();
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::clear()
+template<typename float_t>
+void svf_lin_naive<float_t>::clear()
 {
 	this->_outputs = {0.f, 0.f, 0.f, 0.f };
 	this->_state = { 0.f, 0.f };
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::setCutoff(floatType wc)
+template<typename float_t>
+void svf_lin_naive<float_t>::setCutoff(float_t wc)
 {
 	this->w_c = wc;
 	this->_cutoffTarget = w_c;
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize)
+template<typename float_t>
+void svf_lin_naive<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
 {
 	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::updateCutoff()
+template<typename float_t>
+void svf_lin_naive<float_t>::updateCutoff()
 {
 	this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::setResonance(floatType res)
+template<typename float_t>
+void svf_lin_naive<float_t>::setResonance(float_t res)
 {
 	this->resonance = res;
 	this->R = 1.f / res;
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
+template<typename float_t>
+void svf_lin_naive<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
 {
 	if (res_target > 0.9f)
 		res_target = 0.9f;
@@ -389,8 +324,8 @@ void svf_lin_naive<floatType>::updateResonance(floatType res_target, floatType o
 	this->resonance += (res_target - this->resonance) * oneOverBlockSize;
 	this->R = 1.f / res_target;
 }
-template<typename floatType>
-void svf_lin_naive<floatType>::updateResonance()
+template<typename float_t>
+void svf_lin_naive<float_t>::updateResonance()
 {
 	if (this->_resonanceTarget > 0.9f)
 		this->_resonanceTarget = 0.9f;
@@ -399,22 +334,22 @@ void svf_lin_naive<floatType>::updateResonance()
 	this->R = 1.f / this->_resonanceTarget;
 }
 /*
- void filter(floatType input)
+ void filter(float_t input)
  {
  using namespace nvs_memoryless;
  _outputs.lp = _state.lp + this->w_c * this->fs_inv * _state.bp;
- _outputs.hp = clamp<floatType>((input - (2 * R * _state.bp) - _state.lp), -10.f, 10.f);
+ _outputs.hp = clamp<float_t>((input - (2 * R * _state.bp) - _state.lp), -10.f, 10.f);
  _outputs.bp = _state.bp + this->w_c * this->fs_inv * _outputs.hp;
  
  // update state
- _state.bp = clamp<floatType>(_outputs.bp, -10.f, 10.f);
- _state.lp = clamp<floatType>(_outputs.lp, -10.f, 10.f);
+ _state.bp = clamp<float_t>(_outputs.bp, -10.f, 10.f);
+ _state.lp = clamp<float_t>(_outputs.lp, -10.f, 10.f);
  }
  */
-template<typename floatType>
-void svf_lin_naive<floatType>::filter(floatType input)
+template<typename float_t>
+void svf_lin_naive<float_t>::filter(float_t input)
 {
-	floatType c, d;
+	float_t c, d;
 	c = 2.f * sin(PI * w_c * this->fs_inv);
 	d = 2.f * (1.f - pow(resonance, 0.25f));
 	
@@ -440,32 +375,32 @@ void svf_lin_naive<floatType>::filter(floatType input)
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
  */
-template<typename floatType>
-svf_nl_rk<floatType>::svf_nl_rk() 
+template<typename float_t>
+svf_nl_rk<float_t>::svf_nl_rk()
 : _oversample_factor(1), h(0.000022675736961),
 w_c(200.0), R(1.0), resonance(1.0)
 {
-	this->sampleRate = (floatType)44100;
+	this->sampleRate = (float_t)44100;
 	for (int i = 0; i < 2; i++)
 	{
 		deriv1[i] = deriv2[i] = deriv3[i] = deriv4[i] = 0.f;
 	}
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::setSampleRate(floatType sample_rate)
+template<typename float_t>
+void svf_nl_rk<float_t>::setSampleRate(float_t sample_rate)
 {
 	this->sampleRate = sample_rate;
 	this->fs_inv = 1.f / sample_rate;
 	this->h = 1.f / (_oversample_factor * sample_rate);
 }  
-template<typename floatType>
-void svf_nl_rk<floatType>::set_oversample(int oversample_factor)
+template<typename float_t>
+void svf_nl_rk<float_t>::set_oversample(int oversample_factor)
 {
 	_oversample_factor = oversample_factor;
 	h = 1.f / (oversample_factor * this->sampleRate);
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::clear()
+template<typename float_t>
+void svf_nl_rk<float_t>::clear()
 {
 	for (int i = 0; i < 2; i++)
 	{
@@ -474,49 +409,49 @@ void svf_nl_rk<floatType>::clear()
 		this->_state = { 0.f, 0.f };
 	}
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::setCutoff(floatType wc)
+template<typename float_t>
+void svf_nl_rk<float_t>::setCutoff(float_t wc)
 {
 	this->w_c = wc;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize)
+template<typename float_t>
+void svf_nl_rk<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
 {
 	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::updateCutoff()
+template<typename float_t>
+void svf_nl_rk<float_t>::updateCutoff()
 {
 	this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::setResonance(floatType res)
+template<typename float_t>
+void svf_nl_rk<float_t>::setResonance(float_t res)
 {
 	if (res < 0.5f) res = 0.5f;
 	this->resonance = res;
 	this->R = 1.f / res;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize)
+template<typename float_t>
+void svf_nl_rk<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
 {
 	if (res_target < 0.5f) res_target = 0.5f;
 	this->resonance += (res_target - this->resonance) * oneOverBlockSize;
 	this->R = 1.f / this->resonance;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::updateResonance()
+template<typename float_t>
+void svf_nl_rk<float_t>::updateResonance()
 {
 	if (this->_resonanceTarget < 0.5f) this->_resonanceTarget = 0.5f;
 	this->resonance += (this->_resonanceTarget - this->resonance) * this->_oneOverBlockSize;
 	this->R = 1.f / this->resonance;
 }
-template<typename floatType>
-void svf_nl_rk<floatType>::filter(floatType input)
+template<typename float_t>
+void svf_nl_rk<float_t>::filter(float_t input)
 {
 	using namespace nvs::memoryless;
-	floatType hp(0), np(0);
+	float_t hp(0), np(0);
 	// overwritten states. [0] is bp, [1] is lp.
-	floatType tempstate[2];
+	float_t tempstate[2];
 	
 	for (int iter = 0; iter < _oversample_factor; iter++)
 	{
@@ -561,36 +496,36 @@ void svf_nl_rk<floatType>::filter(floatType input)
 }
 
 //==============================================================================
-template<typename floatType>
-slewlim<floatType>::slewlim()
+template<typename float_t>
+slewlim<float_t>::slewlim()
 : _vOut(0.f)
 {
 	setSampleRate(44100.f);
 }
-template<typename floatType>
-slewlim<floatType>::slewlim(floatType sample_rate)
+template<typename float_t>
+slewlim<float_t>::slewlim(float_t sample_rate)
 : _vOut(0.f)
 {
 	setSampleRate(sample_rate);
 }
 //============================================================
-template<typename floatType>
-void slewlim<floatType>::setSampleRate(floatType sample_rate)
+template<typename float_t>
+void slewlim<float_t>::setSampleRate(float_t sample_rate)
 {
 	this->sampleRate = sample_rate;
 	this->fs_inv = 1.f / sample_rate;
 }
 //============================================================
 // immediate change
-template<typename floatType>
-void slewlim<floatType>::setRise(floatType rise)
+template<typename float_t>
+void slewlim<float_t>::setRise(float_t rise)
 {
 	this->rise = rise;
 	this->riseInc = (this->fs_inv * 1000.f) / (this->rise);
 }
 // change over block size
-template<typename floatType>
-void slewlim<floatType>::setRise()
+template<typename float_t>
+void slewlim<float_t>::setRise()
 {
 	if (_riseTarget != rise)
 	{
@@ -598,22 +533,22 @@ void slewlim<floatType>::setRise()
 		this->riseInc = (this->fs_inv * 1000.f) / (rise);
 	}
 }
-template<typename floatType>
-void slewlim<floatType>::setRise(floatType riseTarget, floatType oneOverBlockSize)
+template<typename float_t>
+void slewlim<float_t>::setRise(float_t riseTarget, float_t oneOverBlockSize)
 {
 	this->rise += (riseTarget - this->rise) * oneOverBlockSize;
 	this->riseInc = (this->fs_inv * 1000.f) / (this->rise);
 }
 // immediate change
-template<typename floatType>
-void slewlim<floatType>::setFall(floatType fall)
+template<typename float_t>
+void slewlim<float_t>::setFall(float_t fall)
 {
 	this->fall = fall;
 	this->fallInc = (this->fs_inv * 1000.f) / (this->fall);
 }
 // change over block size
-template<typename floatType>
-void slewlim<floatType>::setFall()
+template<typename float_t>
+void slewlim<float_t>::setFall()
 {
 	if (_fallTarget != fall)
 	{
@@ -621,15 +556,15 @@ void slewlim<floatType>::setFall()
 		this->fallInc = (this->fs_inv * 1000.f) / (fall);
 	}
 }
-template<typename floatType>
-void slewlim<floatType>::setFall(floatType fallTarget, floatType oneOverBlockSize)
+template<typename float_t>
+void slewlim<float_t>::setFall(float_t fallTarget, float_t oneOverBlockSize)
 {
 	this->fall += (fallTarget - this->fall) * oneOverBlockSize;
 	this->fallInc = (this->fs_inv * 1000.f) / (this->fall);
 }
 //============================================================
-template<typename floatType>
-floatType slewlim<floatType>::ASR(floatType gate)
+template<typename float_t>
+float_t slewlim<float_t>::ASR(float_t gate)
 {
 	using namespace nvs::memoryless;
 	
@@ -639,44 +574,44 @@ floatType slewlim<floatType>::ASR(floatType gate)
 	if (_vOut < gate)
 	{
 		_vOut += riseInc;
-		_vOut = clamp_high<floatType>(_vOut, gate);
+		_vOut = clamp_high<float_t>(_vOut, gate);
 	}
 	else if (_vOut > gate)
 	{
 		_vOut -= fallInc;
-		_vOut = clamp_low<floatType>(_vOut, gate);
+		_vOut = clamp_low<float_t>(_vOut, gate);
 	}
 	
 	return _vOut;
 }
 //=============================================================================
-template<typename floatType>
-dcBlock<floatType>::dcBlock()   :   dcBlock((floatType)44100.0)
+template<typename float_t>
+dcBlock<float_t>::dcBlock()   :   dcBlock((float_t)44100.0)
 {}
-template<typename floatType>
-dcBlock<floatType>::dcBlock(floatType sample_rate)
+template<typename float_t>
+dcBlock<float_t>::dcBlock(float_t sample_rate)
 {
-	this->setSampleRate((floatType)sample_rate);
+	this->setSampleRate((float_t)sample_rate);
 	clear();
 	R = 0.995f;  //fixed R, should base on sample rate instead
 }
-template<typename floatType>
-void dcBlock<floatType>::setSampleRate(floatType sampleRate){
+template<typename float_t>
+void dcBlock<float_t>::setSampleRate(float_t sampleRate){
 	this->sample_rate = sampleRate;
 	this->fs_inv = 1.f / sampleRate;
 }
-template<typename floatType>
-void dcBlock<floatType>::clear()
+template<typename float_t>
+void dcBlock<float_t>::clear()
 {
 	xz1 = yz1 = 0.f;
 }
-template<typename floatType>
-void dcBlock<floatType>::updateR(floatType R_target, floatType oneOverBlockSize)
+template<typename float_t>
+void dcBlock<float_t>::updateR(float_t R_target, float_t oneOverBlockSize)
 {
 	R += (R_target - R) * oneOverBlockSize;
 }
-template<typename floatType>
-floatType dcBlock<floatType>::filter(floatType x)
+template<typename float_t>
+float_t dcBlock<float_t>::filter(float_t x)
 {// y[i] = x[i] - x[i - 1] + R * y[i - 1];
 	yz1 = x - xz1 + R * yz1;
 	xz1 = x;
@@ -684,52 +619,52 @@ floatType dcBlock<floatType>::filter(floatType x)
 }
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
-template<typename floatType>
-inline void CTPTMoogFilterStage<floatType>::initialize(floatType newSampleRate)
+template<typename float_t>
+inline void CTPTMoogFilterStage<float_t>::initialize(float_t newSampleRate)
 {
 	// save
 	sampleRate = newSampleRate;
 	z1 = 0;
 }
-template<typename floatType>
-void CTPTMoogFilterStage<floatType>::setFc(floatType fc)
+template<typename float_t>
+void CTPTMoogFilterStage<float_t>::setFc(float_t fc)
 {
 	// prewarp the cutoff- these are bilinear-transform filters
-	floatType wd = 2 * PI * fc;
-	floatType fs_inv  = 1 / sampleRate;
-	floatType wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
-	floatType g  = wa * fs_inv / 2;
+	float_t wd = 2 * PI * fc;
+	float_t fs_inv  = 1 / sampleRate;
+	float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
+	float_t g  = wa * fs_inv / 2;
 	// calculate big G value; see Zavalishin p46 The Art of VA Design
 	G = g / (1.0 + g);
 }
-template<typename floatType>
-floatType CTPTMoogFilterStage<floatType>::doFilterStage(floatType xn)
+template<typename float_t>
+float_t CTPTMoogFilterStage<float_t>::doFilterStage(float_t xn)
 {
-	floatType v = (xn - z1) * G;
-	floatType out = v + z1;
+	float_t v = (xn - z1) * G;
+	float_t out = v + z1;
 	z1 = out + v;
 	return out;
 }
-template<typename floatType>
-floatType CTPTMoogFilterStage<floatType>::getSampleRate()
+template<typename float_t>
+float_t CTPTMoogFilterStage<float_t>::getSampleRate()
 {
 	return sampleRate;
 }
-template<typename floatType>
-floatType CTPTMoogFilterStage<floatType>::getStorageRegisterValue()
+template<typename float_t>
+float_t CTPTMoogFilterStage<float_t>::getStorageRegisterValue()
 {
 	return z1;
 }
-template<typename floatType>
-inline void CTPTMoogLadderFilter<floatType>::initialize(floatType newSampleRate)
+template<typename float_t>
+inline void CTPTMoogLadderFilter<float_t>::initialize(float_t newSampleRate)
 {
 	filter1.initialize(newSampleRate);
 	filter2.initialize(newSampleRate);
 	filter3.initialize(newSampleRate);
 	filter4.initialize(newSampleRate);
 }
-template<typename floatType>
-inline void CTPTMoogLadderFilter<floatType>::calculateTPTCoeffs(floatType cutoff, floatType Q)
+template<typename float_t>
+inline void CTPTMoogLadderFilter<float_t>::calculateTPTCoeffs(float_t cutoff, float_t Q)
 {
 	// 4 sync-tuned filters
 	filter1.setFc(cutoff);
@@ -742,23 +677,23 @@ inline void CTPTMoogLadderFilter<floatType>::calculateTPTCoeffs(floatType cutoff
 	// ours
 	fc = cutoff;
 }
-template<typename floatType>
-floatType CTPTMoogLadderFilter<floatType>::doTPTMoogLPF(floatType xn)
+template<typename float_t>
+float_t CTPTMoogLadderFilter<float_t>::doTPTMoogLPF(float_t xn)
 {
 	// calculate g
-	floatType wd = 2 * PI * fc;
-	floatType fs_inv  = 1 / (floatType)filter1.getSampleRate();
-	floatType wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
-	floatType g  = wa * fs_inv / 2;
-	floatType G = g * g * g * g;
-	floatType S = g * g * g * filter1.getStorageRegisterValue() +
+	float_t wd = 2 * PI * fc;
+	float_t fs_inv  = 1 / (float_t)filter1.getSampleRate();
+	float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
+	float_t g  = wa * fs_inv / 2;
+	float_t G = g * g * g * g;
+	float_t S = g * g * g * filter1.getStorageRegisterValue() +
 	g * g * filter2.getStorageRegisterValue() +
 	g * filter3.getStorageRegisterValue() +
 	filter4.getStorageRegisterValue();
 	//uis input to filters, straight from book
-	floatType u = (xn - k * S) / (1 + k * G);
+	float_t u = (xn - k * S) / (1 + k * G);
 	// four cascades using nested functions
-	floatType filterOut = filter4.doFilterStage(filter3.doFilterStage (filter2.doFilterStage(filter1.doFilterStage(u))));
+	float_t filterOut = filter4.doFilterStage(filter3.doFilterStage (filter2.doFilterStage(filter1.doFilterStage(u))));
 	// output
 	return filterOut;
 }
@@ -766,83 +701,83 @@ floatType CTPTMoogLadderFilter<floatType>::doTPTMoogLPF(floatType xn)
 /* 
  time-variant allpass filter
  */
-template<typename floatType>
-void tvap<floatType>::setSampleRate(floatType sample_rate)
+template<typename float_t>
+void tvap<float_t>::setSampleRate(float_t sample_rate)
 {
 	this->sampleRate = sample_rate;
 	this->fs_inv = 1.f / sample_rate;
 	lp.setSampleRate(sample_rate);
 	lp.updateCutoff(sample_rate * 0.125f, 1.f);
 }    
-template<typename floatType>
-void tvap<floatType>::clear(){
+template<typename float_t>
+void tvap<float_t>::clear(){
 	sp->z1 = sp->z2 = sp->fb_proc = 0.f;
 };
-template<typename floatType>
-void tvap<floatType>::updateCutoff(floatType cutoff_target, floatType oneOverBlockSize) {
+template<typename float_t>
+void tvap<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize) {
 	if (cutoff_target < 0) cutoff_target = 0;
 	f_pi += (cutoff_target - f_pi) * oneOverBlockSize;
 	calc_b1();
 }
-template<typename floatType>
-void tvap<floatType>::updateResonance(floatType res_target, floatType oneOverBlockSize){
+template<typename float_t>
+void tvap<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize){
 	//if (f_b <= 0) f_b = 0.0000000001;
 	f_b += (res_target - f_b) * oneOverBlockSize;
 	f_b_to_b0();
 }
 // function aliases just to have more meaningful names
-template<typename floatType>
-void tvap<floatType>::update_f_pi (floatType f_pi_target, floatType oneOverBlockSize)
+template<typename float_t>
+void tvap<float_t>::update_f_pi (float_t f_pi_target, float_t oneOverBlockSize)
 {   updateCutoff(f_pi_target, oneOverBlockSize); }
-template<typename floatType>
-void tvap<floatType>::update_f_b(floatType f_b_target, floatType oneOverBlockSize)
+template<typename float_t>
+void tvap<float_t>::update_f_b(float_t f_b_target, float_t oneOverBlockSize)
 {   updateResonance(f_b_target, oneOverBlockSize); }
 
-template<typename floatType>
-void tvap<floatType>::calc_b1(void) {
-	floatType d = -1 * cos((2.f * PI * f_pi) / this->sampleRate);
-	floatType c = (tan(PI * f_b / this->sampleRate) - 1.f) / (tan(PI * f_b / this->sampleRate) + 1.f);
-	floatType r1 = acos(-1.f * c);
-	floatType r2 = acos(-1.f * d);
+template<typename float_t>
+void tvap<float_t>::calc_b1(void) {
+	float_t d = -1 * cos((2.f * PI * f_pi) / this->sampleRate);
+	float_t c = (tan(PI * f_b / this->sampleRate) - 1.f) / (tan(PI * f_b / this->sampleRate) + 1.f);
+	float_t r1 = acos(-1.f * c);
+	float_t r2 = acos(-1.f * d);
 	b1 = cos(r1) * (1.f + cos(r2));
 }
-template<typename floatType>
-void tvap<floatType>::f_b_to_b0(void) {
-	floatType c = (tan(PI * f_b / this->sampleRate) - 1.f) / (tan(PI * f_b / this->sampleRate) + 1.f);
-	floatType r1 = acos(-1.f * c);
+template<typename float_t>
+void tvap<float_t>::f_b_to_b0(void) {
+	float_t c = (tan(PI * f_b / this->sampleRate) - 1.f) / (tan(PI * f_b / this->sampleRate) + 1.f);
+	float_t r1 = acos(-1.f * c);
 	b0 = cos(r1);
 }
 
-template<typename floatType>
-floatType tvap<floatType>::f_pi2r2(floatType _f_pi)
+template<typename float_t>
+float_t tvap<float_t>::f_pi2r2(float_t _f_pi)
 {
-	floatType d = -1 * cos((2.f * PI * _f_pi) / this->sampleRate);
-	floatType r2 = acos(-d);
+	float_t d = -1 * cos((2.f * PI * _f_pi) / this->sampleRate);
+	float_t r2 = acos(-d);
 	return r2;
 }
-template<typename floatType>
-floatType tvap<floatType>::f_b2r1(floatType _f_b)
+template<typename float_t>
+float_t tvap<float_t>::f_b2r1(float_t _f_b)
 {
-	floatType tmp = tan(PI * _f_b / this->sampleRate);
-	floatType c = (tmp - 1.f) / (tmp + 1.f);
-	floatType r1 = acos(-c);
+	float_t tmp = tan(PI * _f_b / this->sampleRate);
+	float_t c = (tmp - 1.f) / (tmp + 1.f);
+	float_t r1 = acos(-c);
 	return r1;
 }
 
-template<typename floatType>
-floatType tvap<floatType>::filter(floatType x_n) {
-	/* floatType _y1 = state.y1;
-	 floatType _y2 = state.y2;
-	 floatType _x1 = state.x1;
-	 floatType _x2 = state.x2;
-	 floatType y_n = b0 * x_n - b1 * _x1 + _x2 + b1 * _y1 - b0 * _y2;
+template<typename float_t>
+float_t tvap<float_t>::filter(float_t x_n) {
+	/* float_t _y1 = state.y1;
+	 float_t _y2 = state.y2;
+	 float_t _x1 = state.x1;
+	 float_t _x2 = state.x2;
+	 float_t y_n = b0 * x_n - b1 * _x1 + _x2 + b1 * _y1 - b0 * _y2;
 	 state.y2 = _y1;
 	 state.y1 = y_n;
 	 state.x2 = _x1;
 	 state.x1 = x_n;
 	 return y_n; */
-	floatType _r1, _r2, _cr1, _cr2, _sr1, _sr2;
-	floatType tmp [3];
+	float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+	float_t tmp [3];
 	_r1 = f_b2r1(f_b);
 	_r2 = f_pi2r2(f_pi);
 	
@@ -865,18 +800,18 @@ floatType tvap<floatType>::filter(floatType x_n) {
 }
 
 // should be in memoryless but got linker error
-template<typename floatType>
-inline floatType tvap<floatType>::unboundSat2(floatType x)
+template<typename float_t>
+inline float_t tvap<float_t>::unboundSat2(float_t x)
 {
-	floatType num = 2.0 * x;
-	floatType denom = 1.0 + sqrt(1.0 + abs(4.0 * x));
+	float_t num = 2.0 * x;
+	float_t denom = 1.0 + sqrt(1.0 + abs(4.0 * x));
 	return num / denom;
 }
 
-template<typename floatType>
-floatType tvap<floatType>::filter_fbmod(floatType x_n, floatType fb_f_pi, floatType fb_f_b)
+template<typename float_t>
+float_t tvap<float_t>::filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b)
 {
-	floatType _f_pi_n, _f_b_n;
+	float_t _f_pi_n, _f_b_n;
 	_f_pi_n = f_pi;
 	_f_b_n = f_b;
 	
@@ -894,12 +829,12 @@ floatType tvap<floatType>::filter_fbmod(floatType x_n, floatType fb_f_pi, floatT
 	else
 		_f_b_n += 1.0;
 	
-	floatType highLimit = (this->sampleRate * 0.495);
+	float_t highLimit = (this->sampleRate * 0.495);
 	if (_f_pi_n >= highLimit) _f_pi_n = highLimit;
 	if (_f_b_n >= highLimit) _f_b_n = highLimit;
 	
-	floatType _r1, _r2, _cr1, _cr2, _sr1, _sr2;
-	floatType tmp[3];
+	float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+	float_t tmp[3];
 	_r1 = f_b2r1(_f_b_n);
 	_r2 = f_pi2r2(_f_pi_n);
 	
@@ -919,7 +854,7 @@ floatType tvap<floatType>::filter_fbmod(floatType x_n, floatType fb_f_pi, floatT
 	state.z2 = tmp[2];
 	
 	
-	floatType fb_filt = dcFilt.filter(tmp[0]);   // used to feed output to modulate control inputs
+	float_t fb_filt = dcFilt.filter(tmp[0]);   // used to feed output to modulate control inputs
 	fb_filt = lp.tpt_lp(fb_filt);
 	//fb_filt = 0.5f * (fb_filt + _fb_filt_z1);
 	state.fb_proc = fb_filt;

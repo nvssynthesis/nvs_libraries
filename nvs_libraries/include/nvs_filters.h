@@ -10,6 +10,7 @@
  ***TODO:
 	-optimize tvap:
 		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
+	-free cutoff_to_g(), both because it CAN be free and because not all filters need it
 	-remove #include <iostream>
 **	-remove filter_abstract::z1
 	-make lookup tables static
@@ -24,111 +25,177 @@
 namespace nvs	{
 namespace filters {
 
-template<typename floatType>
-class filter_abstract{
-	static_assert(std::is_floating_point<floatType>::value, "filter_abstract type must be floating point");
-public:
-	virtual ~filter_abstract() = 0;
-	//==============================================================================
-	virtual void setSampleRate(floatType sample_rate){
-		this->sampleRate = sample_rate;
-		this->fs_inv = 1.f / sample_rate;
+template<typename float_t>
+float_t cutoff_to_g_inaccurate(float_t cutoff, float_t fs_inv){
+	return cutoff * fs_inv * 0.5;
+}
+template<typename float_t>
+float_t cutoff_to_g_slow(float_t cutoff, float_t fs_inv){
+	return tan(cutoff * fs_inv * PI);
+}
+
+template<typename float_t>
+struct CutoffToG
+{
+	static_assert(std::is_floating_point<float_t>::value, "CutoffToG type must be floating point");
+
+	void setSampleRate(float_t sr){
+		_fs_inv = static_cast<float_t>(1) / sr;
 	}
-	virtual void clear() = 0;
-	virtual void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize) = 0;
-	virtual void updateResonance(floatType res_target, floatType oneOverBlockSize) = 0;
-	floatType cutoff_to_g(floatType cutoff){ // could be static (or free function)
-		//return cutoff * this->fs_inv * 0.5;    // no prewarp
-		//return tan(cutoff * fs_inv * PI);      // expensive prewarp
+	float_t operator()(float_t cutoff){
 		using namespace nvs::memoryless;
 		if ((trig.tan_table) != NULL)
 		{
-			//floatType wc = TWOPI * cutoff;
-			return (floatType)this->trig.tan_LUT(cutoff * fs_inv / 2.f);
+			//float_t wc = TWOPI * cutoff;
+			return static_cast<float_t>(trig.tan_LUT(cutoff * _fs_inv / 2.0));
 		}
 		else
 			return 0.f;
 	}
-protected:
-	nvs::memoryless::trigTables<floatType> trig;
-	floatType sampleRate, fs_inv; // why can't these be static?
-	floatType _cutoffTarget, _resonanceTarget;
-	floatType z1; // turn into variable-length array with template<unsigned int>
+private:
+	nvs::memoryless::trigTables<float_t> trig;
+	float_t _fs_inv;
 };
-template<typename floatType>
-inline filter_abstract<floatType>::~filter_abstract() { }
 
 //==================================================================================
 
-template<typename floatType>
-class onePole   :   public filter_abstract<floatType>
+template<typename float_t>
+class filter_abstract{
+	static_assert(std::is_floating_point<float_t>::value, "filter_abstract type must be floating point");
+public:
+	virtual ~filter_abstract() = 0;
+	//============================================================
+	virtual void clear() = 0;
+	virtual void setSampleRate(float_t sample_rate){
+		_fs_inv = static_cast<float_t>(1.0) / sample_rate;
+	}
+	virtual void setBlockSize(size_t blockSize){
+		_blockSize_inv = static_cast<float_t>(1) / static_cast<float_t>(blockSize);
+	}
+	//============================================================
+	virtual void setCutoffTarget(float_t cutoff_target){
+		_cutoffTarget = cutoff_target;
+	}
+	virtual void updateCutoff(){
+		_w_c += (_cutoffTarget - _w_c) * _blockSize_inv;
+	}
+	virtual void setResonanceTarget(float_t res_target){
+		_resonanceTarget = res_target;
+	}
+	virtual void updateResonance(){
+		_q += (_resonanceTarget - _q) * _blockSize_inv;
+	}
+	//============================================================
+	virtual float_t operator()(float_t input) = 0;
+	virtual float_t operator()(float_t input, float_t cutoff) = 0;
+	virtual float_t operator()(float_t input, float_t cutoff, float_t resonance) = 0;
+	
+protected:
+	nvs::memoryless::trigTables<float_t> trig;
+	float_t _fs_inv;
+	float_t _cutoffTarget, _resonanceTarget;
+	float_t _w_c, _q;
+	float_t _blockSize_inv;
+};
+template<typename float_t>
+inline filter_abstract<float_t>::~filter_abstract() { }
+
+/**
+ TODO:
+**	-get rid of y_n as stored value
+	-don't use clamp if unnecessary (and it should be)
+ */
+template<typename float_t>
+class onePole   :   public filter_abstract<float_t>
 {
 public:
-	onePole();
-	onePole(floatType sample_rate);
-	void clear();
+	void clear() override {
+		y_n = v_n = z1 = 0.0;
+	}
 	//==============================================================================
-	void updateCutoff();
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	/* a one pole filter has no resonance. */
+	virtual void setResonanceTarget(float_t) override {}
+	virtual void updateResonance() override {}
 	//==============================================================================
-	floatType tpt_lp(floatType input);
-	floatType tpt_lp(floatType input, floatType cutoff);
-	floatType tpt_hp(floatType input);
-	floatType tpt_hp(floatType input, floatType cutoff);
+	
+	float_t tpt_lp(float_t input){
+		g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		v_n = (input - this->z1) * g / (1.0 + g);
+		y_n = v_n + this->z1;
+		this->z1 = y_n + v_n;
+		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
+	 }
+	float_t tpt_lp(float_t input, float_t cutoff){
+		g = cutoff_to_g_slow(cutoff, this->_fs_inv);
+		v_n = (input - this->z1) * g / (1.0 + g);
+		y_n = v_n + this->z1;
+		this->z1 = y_n + v_n;
+		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
+	}
+	
+	float_t tpt_hp(float_t input){
+		return input - tpt_lp(input);
+	}
+	float_t tpt_hp(float_t input, float_t cutoff){
+		return input - tpt_lp(input, cutoff);
+	}
 	//==============================================================================
+	float_t operator()(float_t input) override {
+		return tpt_lp(input);
+	}
+	float_t operator()(float_t input, float_t cutoff) override {
+		return tpt_lp(input, cutoff);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t) override {
+		/*
+		 is there a way to warn upon calling a function? but i do not want to deprecate this
+		 because it could have some use for generic interfaces
+		 */
+		return tpt_lp(input, cutoff);
+	}
 private:
-	floatType g, v_n, y_n;
-	floatType w_c;
+	float_t v_n {0.0}, y_n {0.0}, z1 {0.0};
+	float_t g {0.0};
 };
 //==============================================================================
 
-template<typename floatType>
-class butterworth2p :   public filter_abstract<floatType>
+/**
+ TODO:
+*	-replace cutoff_to_g_slow()
+ */
+template<typename float_t>
+class butterworth2p :   public filter_abstract<float_t>
 {
 public:
-	butterworth2p() :   butterworth2p(44100.0){}
-	butterworth2p(floatType sample_rate) /*   :   A(2,2), B(2,1), C(1,2), D(1,1), x(2), y(1)*/{
-		this->setSampleRate(sample_rate);
+	butterworth2p() {
 		clear();
 		A.b = 1.0;
 		B.b = 1.0;
 		D = 0.0;
-		if ((this->trig.tan_table) == NULL){
-			std::cout << "TAN TABLE NULL!\n";
-		}
 	}
-	void clear(){
+	void clear() override {
 		x.a = x.b = 0.f;
 		y = 0.f;
 	}
-	//==============================================================================
-	void updateCutoff() {
-		if (this->_cutoffTarget != this->w_c)
-			this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
-		calcCoefs(this->w_c);
+	//============================================================
+	virtual void updateCutoff() override {
+		this->filter_abstract<float_t>::updateCutoff();
+		calcCoefs(this->_w_c);
 	}
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize){
-		this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-		calcCoefs(this->w_c);
-	}
-	void updateResonance(floatType res_target, floatType oneOverBlockSize){std::cout << "butterworth has fixed Q\n";}
+	// no altering Q for butterworth
+	virtual void updateResonance() override {}
+	virtual void setResonanceTarget(float_t) override {}
 	
-	void calcCoefs(const floatType cutoff){
-		//        const floatType fr = this->sampleRate / cutoff;
-		//        floatType omega = tan(M_PI / fr);
-		const floatType omega = this->trig.tan_LUT(cutoff / this->sampleRate);
-		const floatType omega2 = omega * omega;
-		//        static const floatType cosPiOver4 = 0.707106781186548;
-		const floatType twoCosPiOver4xOmega =  1.414213562373095 * omega;
-		const floatType c = 1.0 + twoCosPiOver4xOmega + omega2;
+	void calcCoefs(const float_t cutoff){
+		const float_t omega = cutoff_to_g_slow(cutoff, this->_fs_inv);
+		const float_t omega2 = omega * omega;
+		const float_t twoCosPiOver4xOmega = 1.414213562373095 * omega;
+		const float_t c = 1.0 + twoCosPiOver4xOmega + omega2;
 		
-		const floatType b0 = omega2 / c;
-		const floatType b1 = 2.0 * b0;
-		//        const floatType b2 = b0;
-		//        const floatType a0 = 1.0;
-		const floatType a1 = (2.0 * (omega2 - 1.0)) / c;
-		const floatType a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
+		const float_t b0 = omega2 / c;
+		const float_t b1 = 2.0 * b0;
+		const float_t a1 = (2.0 * (omega2 - 1.0)) / c;
+		const float_t a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
 		
 		A.c = -a2;
 		A.d = -a1;
@@ -136,7 +203,7 @@ public:
 		C.b = b1 - (a1*b0);
 		D = b0;
 	}
-	floatType filter(floatType x_n){
+	virtual float_t operator()(float_t x_n) override {
 		using namespace nvs_matrix;
 		y = vec2::crossProduct(C, x);
 		y += D * x_n;
@@ -144,122 +211,123 @@ public:
 		
 		return y;
 	}
-	floatType filter(floatType x_n, floatType cutoff){
+	virtual float_t operator()(float_t x_n, float_t cutoff) override {
 		calcCoefs(cutoff);
-		return filter(x_n);
+		return operator()(x_n);
+	}
+	virtual float_t operator()(float_t x_n, float_t cutoff, float_t) override {
+		/* possible to warn for this functions use? */
+		return operator()(x_n, cutoff);
 	}
 	
 private:
 	nvs_matrix::mat2x2 A;
 	nvs_matrix::vec2 B;
 	nvs_matrix::vec2 C;
-	floatType D;
+	float_t D;
 	nvs_matrix::vec2 x;
-	floatType y;
-	
-	floatType b0, b1, b2, a0, a1, a2;
-	floatType w_c;
+	float_t y;
 };
 
 // NOTHING SO FAR.
-template<typename floatType>
-class onePole_nonlinear   :   public onePole<floatType>
+template<typename float_t>
+class onePole_nonlinear   :   public onePole<float_t>
 {
 public:
 private:
 };
 
-template<typename floatType>
-class fourPole_LP_linear    :   public filter_abstract<floatType>
+template<typename float_t>
+class fourPole_LP_linear    :   public filter_abstract<float_t>
 {
 public:
 	fourPole_LP_linear();
-	fourPole_LP_linear(floatType sample_rate);
-	void initialize(floatType sample_rate);
-	void updateOneOverBlockSize(floatType oneOverBlockSize);
+	fourPole_LP_linear(float_t sample_rate);
+	void initialize(float_t sample_rate);
+	void updateOneOverBlockSize(float_t oneOverBlockSize);
 	void clear();
 	void updateCutoff();
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
 	void updateResonance();
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
 	
-	floatType tpt_fourpole(floatType input);
-	floatType tpt_fourpole(floatType input, floatType cutoff);
+	float_t tpt_fourpole(float_t input);
+	float_t tpt_fourpole(float_t input, float_t cutoff);
 	
-	floatType _resonanceTarget;
+	float_t _resonanceTarget;
 private:
-	onePole<floatType> H1, H2, H3, H4;
-	floatType u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
-	floatType w_c, q;
+	onePole<float_t> H1, H2, H3, H4;
+	float_t u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
+	float_t w_c, q;
 };
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 
 // TODO: convert each onepole into a nonlinear onepole
-template<typename floatType>
-class fourPole_LP_nonlinear    :   public filter_abstract<floatType>
+template<typename float_t>
+class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
 {
 public:
 	fourPole_LP_nonlinear();
-	fourPole_LP_nonlinear(floatType sample_rate);
-	void initialize(floatType sample_rate);
-	void updateOneOverBlockSize(floatType oneOverBlockSize);
+	fourPole_LP_nonlinear(float_t sample_rate);
+	void initialize(float_t sample_rate);
+	void updateOneOverBlockSize(float_t oneOverBlockSize);
 	void clear();
 	void updateCutoff();
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
 	
 	void updateResonance();
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
 	
 	
-	floatType tpt_fourpole(floatType input);
-	floatType tpt_fourpole(floatType input, floatType cutoff);    
-	//    floatType _resonanceTarget;
+	float_t tpt_fourpole(float_t input);
+	float_t tpt_fourpole(float_t input, float_t cutoff);
+	//    float_t _resonanceTarget;
 private:
-	onePole<floatType> H1, H2, H3, H4;
-	nvs::memoryless::trigTables<floatType> tables;
+	onePole<float_t> H1, H2, H3, H4;
+	nvs::memoryless::trigTables<float_t> tables;
 	int iters;
-	floatType u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
-	floatType w_c, q;
+	float_t u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
+	float_t w_c, q;
 };
 
-template<typename floatType>
+template<typename float_t>
 class svf_prototype
 {
 public:
-	floatType lp() {return _outputs.lp;}
-	floatType bp() {return _outputs.bp;}
-	floatType hp() {return _outputs.hp;}
-	floatType np() {return _outputs.np;}
+	float_t lp() {return _outputs.lp;}
+	float_t bp() {return _outputs.bp;}
+	float_t hp() {return _outputs.hp;}
+	float_t np() {return _outputs.np;}
 	
 protected:
 	struct outputs
 	{
-		floatType lp, bp, hp, np;
+		float_t lp, bp, hp, np;
 	} _outputs = { 0.f, 0.f, 0.f, 0.f };
 	struct state
 	{
-		floatType lp, bp;
+		float_t lp, bp;
 	} _state = { 0.f, 0.f };
 };
 
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
-template<typename floatType>
-class svf_lin_naive     :   public filter_abstract<floatType>, svf_prototype<floatType>
+template<typename float_t>
+class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float_t>
 {
 public:
 	//==============================================================================
 	svf_lin_naive();
 	void clear();
-	void setCutoff(floatType wc);
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
+	void setCutoff(float_t wc);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
 	void updateCutoff();
-	void setResonance(floatType res);
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	void setResonance(float_t res);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
 	void updateResonance();
-	void filter(floatType input);
+	void filter(float_t input);
 private:
 	
-	floatType w_c, R, resonance;
+	float_t w_c, R, resonance;
 	
 };
 //==================================================================================
@@ -273,166 +341,166 @@ private:
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
  */
-template<typename floatType>
-class svf_nl_rk :   public filter_abstract<floatType>, public svf_prototype<floatType>
+template<typename float_t>
+class svf_nl_rk :   public filter_abstract<float_t>, public svf_prototype<float_t>
 {
 public:
 	svf_nl_rk();
-	void setSampleRate(floatType sample_rate);
+	void setSampleRate(float_t sample_rate);
 	void set_oversample(int oversample_factor);
 	void clear();
 	
-	void setCutoff(floatType wc);
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
+	void setCutoff(float_t wc);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
 	void updateCutoff();
-	void setResonance(floatType res);
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	void setResonance(float_t res);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
 	void updateResonance();
-	void filter(floatType input);
+	void filter(float_t input);
 private:
 	int _oversample_factor;
-	floatType h, w_c, R, resonance;
+	float_t h, w_c, R, resonance;
 	// k_1 through k_4. for each, [0] is bp, [1] is lp.
-	floatType deriv1[2], deriv2[2], deriv3[2], deriv4[2]; 
+	float_t deriv1[2], deriv2[2], deriv3[2], deriv4[2];
 };
 
 //==============================================================================
-template<typename floatType>
+template<typename float_t>
 class slewlim
 {
 public:
 	slewlim();
-	slewlim(floatType sample_rate);
+	slewlim(float_t sample_rate);
 	~slewlim()  { }
 	//============================================================
-	void setSampleRate(floatType sample_rate);
+	void setSampleRate(float_t sample_rate);
 	//============================================================
 	// immediate change
-	void setRise(floatType rise);
+	void setRise(float_t rise);
 	// change over block size
 	void setRise();
-	void setRise(floatType riseTarget, floatType oneOverBlockSize);
+	void setRise(float_t riseTarget, float_t oneOverBlockSize);
 	// immediate change
-	void setFall(floatType fall);
+	void setFall(float_t fall);
 	// change over block size
 	void setFall();
-	void setFall(floatType fallTarget, floatType oneOverBlockSize);
+	void setFall(float_t fallTarget, float_t oneOverBlockSize);
 	//============================================================
-	floatType ASR(floatType gate);
+	float_t ASR(float_t gate);
 	
-	floatType _riseTarget, _fallTarget;
-	floatType _oneOverBlockSize;
+	float_t _riseTarget, _fallTarget;
+	float_t _oneOverBlockSize;
 private:
-	floatType sampleRate, fs_inv;
+	float_t sampleRate, fs_inv;
 	
 	// 'Inc' variables tell change per sample.
-	floatType rise, riseInc, fall, fallInc, _vOut;
+	float_t rise, riseInc, fall, fallInc, _vOut;
 };
 
-template<typename floatType>
-class dcBlock   :   public filter_abstract <floatType>
+template<typename float_t>
+class dcBlock   :   public filter_abstract <float_t>
 {
 public:
 	dcBlock();
-	dcBlock(floatType sampleRate);
-	void setSampleRate(floatType sampleRate);
+	dcBlock(float_t sampleRate);
+	void setSampleRate(float_t sampleRate);
 	void clear();
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize){ }
-	void updateResonance(floatType res_target, floatType oneOverBlockSize){ }
-	void updateR(floatType R_target, floatType oneOverBlockSize);
-	floatType filter(floatType x);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){ }
+	void updateResonance(float_t res_target, float_t oneOverBlockSize){ }
+	void updateR(float_t R_target, float_t oneOverBlockSize);
+	float_t filter(float_t x);
 private:
-	floatType R, xz1, yz1;
-	floatType sample_rate;
+	float_t R, xz1, yz1;
+	float_t sample_rate;
 };
 
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
-template<typename floatType>
+template<typename float_t>
 class CTPTMoogFilterStage
 {
 public:
 	CTPTMoogFilterStage(){}
 	~CTPTMoogFilterStage(){}
 protected:
-	floatType G;
-	floatType scalar;
-	floatType sampleRate;
-	floatType z1;
+	float_t G;
+	float_t scalar;
+	float_t sampleRate;
+	float_t z1;
 public:
-	inline void initialize(floatType newSampleRate);
-	void setFc(floatType fc);
+	inline void initialize(float_t newSampleRate);
+	void setFc(float_t fc);
 	
-	floatType doFilterStage(floatType xn);
-	floatType getSampleRate();
-	floatType getStorageRegisterValue();
+	float_t doFilterStage(float_t xn);
+	float_t getSampleRate();
+	float_t getStorageRegisterValue();
 };
-template <typename floatType>
+template <typename float_t>
 class CTPTMoogLadderFilter
 {
 public:
 	CTPTMoogLadderFilter(){}
 	~CTPTMoogLadderFilter(){}
 protected:
-	CTPTMoogFilterStage<floatType> filter1;
-	CTPTMoogFilterStage<floatType> filter2;
-	CTPTMoogFilterStage<floatType> filter3;
-	CTPTMoogFilterStage<floatType> filter4;
-	floatType k; // Q control
-	floatType fc; // fc control
+	CTPTMoogFilterStage<float_t> filter1;
+	CTPTMoogFilterStage<float_t> filter2;
+	CTPTMoogFilterStage<float_t> filter3;
+	CTPTMoogFilterStage<float_t> filter4;
+	float_t k; // Q control
+	float_t fc; // fc control
 public:
-	inline void initialize(floatType newSampleRate);
-	inline void calculateTPTCoeffs(floatType cutoff, floatType Q);
-	floatType doTPTMoogLPF(floatType xn);
+	inline void initialize(float_t newSampleRate);
+	inline void calculateTPTCoeffs(float_t cutoff, float_t Q);
+	float_t doTPTMoogLPF(float_t xn);
 };
 //==================================================================================
 /* 
  time-variant allpass filter
  */
-template<typename floatType>
-class tvap  :   public filter_abstract<floatType>
+template<typename float_t>
+class tvap  :   public filter_abstract<float_t>
 {
 public:
 	tvap() {}
 	~tvap() {}
 	//==============================================================================
-	virtual void setSampleRate(floatType sample_rate);
+	virtual void setSampleRate(float_t sample_rate);
 	
 	void clear();
-	void updateCutoff(floatType cutoff_target, floatType oneOverBlockSize);
-	void updateResonance(floatType res_target, floatType oneOverBlockSize);
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
 	// function aliases just to have more meaningful names
-	void update_f_pi (floatType f_pi_target, floatType oneOverBlockSize);
-	void update_f_b(floatType f_b_target, floatType oneOverBlockSize);
+	void update_f_pi (float_t f_pi_target, float_t oneOverBlockSize);
+	void update_f_b(float_t f_b_target, float_t oneOverBlockSize);
 	
 	void calc_b1(void);
 	void f_b_to_b0(void);
 	
-	floatType f_pi2r2(floatType _f_pi);
-	floatType f_b2r1(floatType _f_b);
+	float_t f_pi2r2(float_t _f_pi);
+	float_t f_b2r1(float_t _f_b);
 	
-	floatType filter(floatType x_n);
+	float_t filter(float_t x_n);
 	
 	// should be in memoryless but got linker error
-	inline floatType unboundSat2(floatType x);
+	inline float_t unboundSat2(float_t x);
 	
-	floatType filter_fbmod(floatType x_n, floatType fb_f_pi, floatType fb_f_b);
-	nvs::memoryless::trigTables<floatType> _LUT;
+	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b);
+	nvs::memoryless::trigTables<float_t> _LUT;
 	
 protected:
 	typedef struct tvapstate {
-		//floatType x1, x2, y1, y2;
-		floatType z1, z2;
-		floatType fb_proc;  // processed fed back output sample
+		//float_t x1, x2, y1, y2;
+		float_t z1, z2;
+		float_t fb_proc;  // processed fed back output sample
 	} _tvapstate;
 	_tvapstate state = {.z1 = 0.f, .z2 = 0.f, .fb_proc = 0.f};
 	_tvapstate *sp = &state;
 	
-	dcBlock<floatType> dcFilt;
-	onePole<floatType> lp;
+	dcBlock<float_t> dcFilt;
+	onePole<float_t> lp;
 private:
-	floatType f_pi, f_b;
-	floatType b0, b1;
+	float_t f_pi, f_b;
+	float_t b0, b1;
 };
 
 }   // namespace filters

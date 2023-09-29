@@ -21,6 +21,7 @@
 #include "nvs_memoryless.h"
 #include "nvs_matrix2x2.h"
 #include <iostream>
+#include <array>
 
 namespace nvs	{
 namespace filters {
@@ -126,11 +127,8 @@ public:
 		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
 	 }
 	float_t tpt_lp(float_t input, float_t cutoff){
-		g = cutoff_to_g_slow(cutoff, this->_fs_inv);
-		v_n = (input - this->z1) * g / (1.0 + g);
-		y_n = v_n + this->z1;
-		this->z1 = y_n + v_n;
-		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
+		this->_w_c = cutoff;
+		return tpt_lp(input);
 	}
 	
 	float_t tpt_hp(float_t input){
@@ -156,6 +154,9 @@ public:
 private:
 	float_t v_n {0.0}, y_n {0.0}, z1 {0.0};
 	float_t g {0.0};
+	
+	template<typename T>
+	friend class fourPole_LP_linear;
 };
 //==============================================================================
 
@@ -241,24 +242,79 @@ template<typename float_t>
 class fourPole_LP_linear    :   public filter_abstract<float_t>
 {
 public:
-	fourPole_LP_linear();
-	fourPole_LP_linear(float_t sample_rate);
-	void initialize(float_t sample_rate);
-	void updateOneOverBlockSize(float_t oneOverBlockSize);
-	void clear();
-	void updateCutoff();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	void updateResonance();
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
+	virtual void setSampleRate(float_t sample_rate) override {
+		this->filter_abstract<float_t>::setSampleRate(sample_rate);
+		for (auto &pole : _poles){
+			pole.setSampleRate(sample_rate);
+		}
+	}
+	virtual void setBlockSize(size_t blockSize) override {
+		this->filter_abstract<float_t>::setBlockSize(blockSize);
+		for (auto &pole : _poles){
+			pole.setBlockSize(blockSize);
+		}
+	}
+	virtual void clear() override {
+		for (auto &pole : _poles){
+			pole.clear();
+		}
+	}
+	virtual void setCutoffTarget(float_t cutoff_target) override
+	{
+		this->filter_abstract<float_t>::setCutoffTarget(cutoff_target);
+		for (auto &pole : _poles){
+			pole.setCutoffTarget(cutoff_target);
+		}
+	}
+	void updateCutoff() override {
+		this->filter_abstract<float_t>::updateCutoff();
+		for (auto &pole : _poles){
+			pole.updateCutoff();
+		}
+	}
+	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
 	
-	float_t tpt_fourpole(float_t input);
-	float_t tpt_fourpole(float_t input, float_t cutoff);
-	
-	float_t _resonanceTarget;
+	float_t tpt_fourpole(float_t input){
+		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+		float_t const g2 = g*g;
+		float_t const G = g2 * g2;
+		float_t const s1 = _poles[0].z1;
+		float_t const s2 = _poles[1].z1;
+		float_t const s3 = _poles[2].z1;
+		float_t const s4 = _poles[3].z1;
+		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
+		
+		float_t const u_n = ((input) * (1 + this->_q) - this->_q * S) / (1 + this->_q * G);
+		
+		float_t y_n = _poles[3].tpt_lp
+						(_poles[2].tpt_lp
+							(_poles[1].tpt_lp
+								(_poles[0].tpt_lp
+									(u_n)
+								 )
+							 )
+						 );
+		
+		return y_n;
+	}
+	float_t operator()(float_t input) override {
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff) override
+	{
+		this->_w_c = cutoff;
+		for (auto & p : _poles){
+			p._w_c = cutoff;
+		}
+		return tpt_fourpole(input);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t reso) override
+	{
+		this->_q = reso;
+		return operator()(input, cutoff);
+	}
 private:
-	onePole<float_t> H1, H2, H3, H4;
-	float_t u_n, y_n, s1, s2, s3, s4, S, y1, y2, y3, y4, g, g_denom, G, k;
-	float_t w_c, q;
+	std::array<onePole<float_t>, 4> _poles;
 };
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 

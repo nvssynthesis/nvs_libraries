@@ -22,97 +22,6 @@ namespace filters {
 
 //==============================================================================
 
-// so far quite tame, since the only nonlinearity is in the feedback path. 
-// TODO: convert each onepole into a nonlinear onepole
-template<typename float_t>
-fourPole_LP_nonlinear<float_t>::fourPole_LP_nonlinear()
-:   iters(16),
-u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
-{
-	float_t def_sampRate = (float_t)44100;
-	this->setSampleRate(def_sampRate);
-	H1.setSampleRate(def_sampRate);
-	H2.setSampleRate(def_sampRate);
-	H3.setSampleRate(def_sampRate);
-	H4.setSampleRate(def_sampRate);
-}
-template<typename float_t>
-fourPole_LP_nonlinear<float_t>::fourPole_LP_nonlinear(float_t sample_rate)
-:   iters(16),
-u_n(0.f), s1(0.f), s2(0.f), s3(0.f), s4(0.f), S(0.f), y1(0.f), y2(0.f), y3(0.f), y4(0.f), G(0.f), k(0.f)
-{
-	this->setSampleRate(sample_rate);
-	H1.setSampleRate(sample_rate);
-	H2.setSampleRate(sample_rate);
-	H3.setSampleRate(sample_rate);
-	H4.setSampleRate(sample_rate);
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::initialize(float_t sample_rate)
-{
-	this->clear();
-	this->setSampleRate(sample_rate);
-	H1.setSampleRate(sample_rate);
-	H2.setSampleRate(sample_rate);
-	H3.setSampleRate(sample_rate);
-	H4.setSampleRate(sample_rate);
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::updateOneOverBlockSize(float_t oneOverBlockSize)
-{
-	this->_oneOverBlockSize = oneOverBlockSize;
-	H1._oneOverBlockSize = oneOverBlockSize;
-	H2._oneOverBlockSize = oneOverBlockSize;
-	H3._oneOverBlockSize = oneOverBlockSize;
-	H4._oneOverBlockSize = oneOverBlockSize;
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::clear()
-{
-	H1.clear();
-	H2.clear();
-	H3.clear();
-	H4.clear();
-	s1 = s2 = s3 = s4 = u_n = y_n = S = 0.f;
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::updateCutoff()
-{
-	float_t local_cutoff = this->w_c;
-	if (this->_cutoffTarget != local_cutoff)
-	{
-		this->w_c += (this->_cutoffTarget - local_cutoff) * this->_oneOverBlockSize;
-		H1._cutoffTarget = local_cutoff;
-		H2._cutoffTarget = local_cutoff;
-		H3._cutoffTarget = local_cutoff;
-		H4._cutoffTarget = local_cutoff;
-		H1.updateCutoff();
-		H2.updateCutoff();
-		H3.updateCutoff();
-		H4.updateCutoff();
-	}
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
-{
-	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-	H1.updateCutoff(cutoff_target, oneOverBlockSize);
-	H2.updateCutoff(cutoff_target, oneOverBlockSize);
-	H3.updateCutoff(cutoff_target, oneOverBlockSize);
-	H4.updateCutoff(cutoff_target, oneOverBlockSize);
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::updateResonance()
-{
-	if (this->_resonanceTarget != k)
-		this->k += (this->_resonanceTarget - this->k) * this->_oneOverBlockSize;
-}
-template<typename float_t>
-void fourPole_LP_nonlinear<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
-{
-	//this->q += (res_target - this->q) * oneOverBlockSize;
-	this->k += (res_target - this->k) * oneOverBlockSize;
-}
 template<typename float_t>
 float_t fourPole_LP_nonlinear<float_t>::tpt_fourpole(float_t input)
 {
@@ -496,64 +405,11 @@ float_t dcBlock<float_t>::filter(float_t x)
 }
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
-template<typename float_t>
-inline void CTPTMoogFilterStage<float_t>::initialize(float_t newSampleRate)
-{
-	// save
-	sampleRate = newSampleRate;
-	z1 = 0;
-}
-template<typename float_t>
-void CTPTMoogFilterStage<float_t>::setFc(float_t fc)
-{
-	// prewarp the cutoff- these are bilinear-transform filters
-	float_t wd = 2 * PI * fc;
-	float_t fs_inv  = 1 / sampleRate;
-	float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
-	float_t g  = wa * fs_inv / 2;
-	// calculate big G value; see Zavalishin p46 The Art of VA Design
-	G = g / (1.0 + g);
-}
-template<typename float_t>
-float_t CTPTMoogFilterStage<float_t>::doFilterStage(float_t xn)
-{
-	float_t v = (xn - z1) * G;
-	float_t out = v + z1;
-	z1 = out + v;
-	return out;
-}
-template<typename float_t>
-float_t CTPTMoogFilterStage<float_t>::getSampleRate()
-{
-	return sampleRate;
-}
-template<typename float_t>
-float_t CTPTMoogFilterStage<float_t>::getStorageRegisterValue()
-{
-	return z1;
-}
-template<typename float_t>
-inline void CTPTMoogLadderFilter<float_t>::initialize(float_t newSampleRate)
-{
-	filter1.initialize(newSampleRate);
-	filter2.initialize(newSampleRate);
-	filter3.initialize(newSampleRate);
-	filter4.initialize(newSampleRate);
-}
-template<typename float_t>
-inline void CTPTMoogLadderFilter<float_t>::calculateTPTCoeffs(float_t cutoff, float_t Q)
-{
-	// 4 sync-tuned filters
-	filter1.setFc(cutoff);
-	filter2.setFc(cutoff);
-	filter3.setFc(cutoff);
-	filter4.setFc(cutoff);
-	
-	// NOTE: Q is limited to 20 on the UI to prevent blowing up //Q=0.707->25==>k=0->4
-	k = 4.0*(Q - 0.707)/(25.0 - 0.707);
-	// ours
-	fc = cutoff;
-}
+
+
+
+
+
 template<typename float_t>
 float_t CTPTMoogLadderFilter<float_t>::doTPTMoogLPF(float_t xn)
 {

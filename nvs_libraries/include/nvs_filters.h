@@ -23,16 +23,19 @@
 #include <iostream>
 #include <array>
 
+#include <concepts>
+#include <type_traits>
+
 namespace nvs	{
 namespace filters {
 
 template<typename float_t>
 float_t cutoff_to_g_inaccurate(float_t cutoff, float_t fs_inv){
-	return cutoff * fs_inv * 0.5;
+	return cutoff * fs_inv * 0.5f * (float_t)PI;
 }
 template<typename float_t>
 float_t cutoff_to_g_slow(float_t cutoff, float_t fs_inv){
-	return tan(cutoff * fs_inv * PI);
+	return tan(cutoff * fs_inv * (float_t)PI);
 }
 
 template<typename float_t>
@@ -114,7 +117,11 @@ inline filter_abstract<float_t>::~filter_abstract() { }
 **	-get rid of y_n as stored value
 	-don't use clamp if unnecessary (and it should be)
  */
-template<typename float_t>
+template<
+	typename float_t,
+typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
+				{ return cutoff_to_g_slow(f_c, fs); })
+>
 class onePole   :   public filter_abstract<float_t>
 {
 public:
@@ -127,69 +134,28 @@ public:
 	virtual void updateResonance() override {}
 	//==============================================================================
 	
-	float_t tpt_lp(float_t input){
-		auto const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
-		v_n = (input - this->z1) * g / (1.0 + g);
+	float_t tpt_lp(float_t x, CutoffToGCallable func){
+		auto const g = std::invoke(func, this->_w_c, this->_fs_inv);
+		auto const G = g / (1.f + g);
+		v_n = (x - this->z1) * G;
 		y_n = v_n + this->z1;
 		this->z1 = y_n + v_n;
 		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
 	 }
-	float_t tpt_lp(float_t input, float_t cutoff){
-		this->_w_c = cutoff;
-		return tpt_lp(input);
-	}
 	
 	float_t tpt_hp(float_t input){
-		return input - tpt_lp(input);
+		return input - tpt_lp(input, {});
 	}
 	float_t tpt_hp(float_t input, float_t cutoff){
-		return input - tpt_lp(input, cutoff);
+		this->_w_c = cutoff;
+		return input - tpt_lp(input, {});
 	}
 	//==============================================================================
 	float_t operator()(float_t input) override {
-		return tpt_lp(input);
+		return tpt_lp(input, {});
 	}
 	float_t operator()(float_t input, float_t cutoff) override {
-		return tpt_lp(input, cutoff);
-	}
-	float_t operator()(float_t input, float_t cutoff, float_t) override {
-		/*
-		 is there a way to warn upon calling a function? but i do not want to deprecate this
-		 because it could have some use for generic interfaces
-		 */
-		return tpt_lp(input, cutoff);
-	}
-	float_t getState(){
-		return z1;
-	}
-private:
-	float_t v_n {0.0}, y_n {0.0}, z1 {0.0};
-};
-//==============================================================================
-
-// NOTHING SO FAR.
-template<typename float_t>
-class onePole_nonlinear_df2   :   public filter_abstract<float_t>
-{
-public:
-	void clear() override {
-		v_n = z1 = 0.0;
-	}
-	//=========================================================================
-	/* a one pole filter has no resonance. */
-	virtual void setResonanceTarget(float_t) override {}
-	virtual void updateResonance() override {}
-	//=========================================================================
-	float_t operator()(float_t input) override {
-		auto g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
-		auto x_n = input * g;
-		v_n = x_n + z1;
-		auto y_n = tanh(v_n);
-		z1 = x_n + y_n;
-		return y_n;
-	}
-	float_t operator()(float_t input, float_t cutoff) override {
-		this->filter_abstract<float_t>::setCutoff(cutoff);
+		this->_w_c = cutoff;
 		return operator()(input);
 	}
 	float_t operator()(float_t input, float_t cutoff, float_t) override {
@@ -203,10 +169,58 @@ public:
 		return z1;
 	}
 private:
+	float_t v_n {0.0}, y_n {0.0}, z1 {0.0};
+};
+//==============================================================================
+
+template<
+	typename float_t,
+	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
+								{ return cutoff_to_g_slow(f_c, fs);})
+>
+class onePole_nonlinear_df2   :   public filter_abstract<float_t>
+{
+public:
+	void clear() override {
+		v_n = z1 = 0.0;
+	}
+	//=========================================================================
+	/* a one pole filter has no resonance. */
+	virtual void setResonanceTarget(float_t) override {}
+	virtual void updateResonance() override {}
+	//=========================================================================
+	float_t lp(float_t x, CutoffToGCallable func){
+		auto g = std::invoke(func, this->_w_c, this->_fs_inv);
+		auto x_n = x * g;
+		v_n = x_n + z1;
+		auto y_n = tanh(v_n);
+		z1 = x_n + y_n;
+		return y_n;
+	}
+	float_t operator()(float_t input) override {
+		return lp(input, {});
+	}
+	float_t operator()(float_t input, float_t cutoff) override {
+		this->filter_abstract<float_t>::setCutoff(cutoff);
+		return operator()(input);
+	}
+	float_t operator()(float_t input, float_t cutoff, float_t) override {
+		/* is there a way to warn upon calling a function? but i do not want to deprecate this
+		 because it could have some use for generic interfaces */
+		return operator()(input, cutoff);
+	}
+	float_t getState(){
+		return z1;
+	}
+private:
 	float_t v_n {0.0}, z1 {0.0};
 };
 
-template<typename float_t>
+template<
+	typename float_t,
+	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
+							{ return cutoff_to_g_slow(f_c, fs);})
+>
 class fourPole_LP_linear    :   public filter_abstract<float_t>
 {
 public:
@@ -242,8 +256,8 @@ public:
 	}
 	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
 	
-	float_t tpt_fourpole(float_t input){
-		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+	float_t tpt_fourpole(float_t x, CutoffToGCallable func){
+		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
 		float_t const g2 = g*g;
 		float_t const G = g2 * g2;
 		float_t const s1 = _poles[0].getState();
@@ -251,22 +265,23 @@ public:
 		float_t const s3 = _poles[2].getState();
 		float_t const s4 = _poles[3].getState();
 		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
+
+		// before i was trying to re-emphasize input sig using (x * (1 + this->_q)) instead of x
+		float_t u_n = (x - this->_q * S)
+					/ (1 + this->_q * G);
 		
-		float_t const u_n = ((input) * (1 + this->_q) - this->_q * S) / (1 + this->_q * G);
-		
-		float_t y_n = _poles[3].tpt_lp
-						(_poles[2].tpt_lp
-							(_poles[1].tpt_lp
-								(_poles[0].tpt_lp
+		float_t y_n = _poles[3]
+						(_poles[2]
+							(_poles[1]
+								(_poles[0]
 									(u_n)
 								 )
 							 )
 						 );
-		
 		return y_n;
 	}
 	float_t operator()(float_t input) override {
-		return tpt_fourpole(input);
+		return tpt_fourpole(input, {});
 	}
 	float_t operator()(float_t input, float_t cutoff) override
 	{
@@ -274,7 +289,7 @@ public:
 		for (auto & p : _poles){
 			p.setCutoff(cutoff);
 		}
-		return tpt_fourpole(input);
+		return operator()(input);
 	}
 	float_t operator()(float_t input, float_t cutoff, float_t reso) override
 	{
@@ -282,12 +297,17 @@ public:
 		return operator()(input, cutoff);
 	}
 private:
-	std::array<onePole<float_t>, 4> _poles;
+	std::array<onePole<float_t, CutoffToGCallable>, 4> _poles;
 };
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 
 // TODO: convert each onepole into a nonlinear onepole
-template<typename float_t, class onePole_t=onePole<float_t>, size_t N_iters=16>
+template<
+	typename float_t,
+	unsigned int N_iters=16,
+	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs) { return cutoff_to_g_slow(f_c, fs);}),
+	class onePole_t=onePole<float_t, CutoffToGCallable>
+>
 class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
 {
 public:
@@ -323,8 +343,8 @@ public:
 	}
 	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
 	
-	float_t tpt_fourpole(float_t input){
-		float_t const g = cutoff_to_g_slow(this->_w_c, this->_fs_inv);
+	float_t tpt_fourpole(float_t input, CutoffToGCallable func){
+		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
 		float_t const g2 = g*g;
 		float_t const G = g2 * g2;
 		float_t const s1 = _poles[0].getState();
@@ -334,24 +354,24 @@ public:
 		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
 		
 		u_n = y_n;  // initial estimation
-		for (auto n = 0; n < N_iters; n++){
+		for (auto n = 0U; n < N_iters; n++){
 			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
 			u_n = input - this->_q * (G * tanh(tmp) + S);
 		}
 		y_n = _poles[3]
-					(_poles[2]
-						(_poles[1]
-							(_poles[0]
-								(u_n)
-							 )
+				(_poles[2]
+					(_poles[1]
+						(_poles[0]
+							(u_n)
 						 )
-					 );
+					 )
+				 );
 		
-		y_n = tanh(y_n);
+//		y_n = tanh(y_n);
 		return y_n;
 	}
 	float_t operator()(float_t input) override {
-		return tpt_fourpole(input);
+		return tpt_fourpole(input, {});
 	}
 	float_t operator()(float_t input, float_t cutoff) override
 	{
@@ -359,7 +379,7 @@ public:
 		for (auto & p : _poles){
 			p.setCutoff(cutoff);
 		}
-		return tpt_fourpole(input);
+		return tpt_fourpole(input, {});
 	}
 	float_t operator()(float_t input, float_t cutoff, float_t reso) override
 	{
@@ -402,13 +422,13 @@ public:
 	void calcCoefs(const float_t cutoff){
 		const float_t omega = cutoff_to_g_slow(cutoff, this->_fs_inv);
 		const float_t omega2 = omega * omega;
-		const float_t twoCosPiOver4xOmega = 1.414213562373095 * omega;
-		const float_t c = 1.0 + twoCosPiOver4xOmega + omega2;
+		const float_t twoCosPiOver4xOmega = (float_t)1.414213562373095 * omega;
+		const float_t c = 1.f + twoCosPiOver4xOmega + omega2;
 		
 		const float_t b0 = omega2 / c;
-		const float_t b1 = 2.0 * b0;
-		const float_t a1 = (2.0 * (omega2 - 1.0)) / c;
-		const float_t a2 = (1.0 - twoCosPiOver4xOmega + omega2) / c;
+		const float_t b1 = 2.f * b0;
+		const float_t a1 = (2.f * (omega2 - 1.f)) / c;
+		const float_t a2 = (1.f - twoCosPiOver4xOmega + omega2) / c;
 		
 		A.c = -a2;
 		A.d = -a1;
@@ -581,19 +601,40 @@ protected:
 	float_t sampleRate;
 	float_t z1;
 public:
-	inline void initialize(float_t newSampleRate);
-	void setFc(float_t fc);
+	inline void initialize(float_t newSampleRate){
+		// save
+		sampleRate = newSampleRate;
+		z1 = 0;
+	}
+	void setFc(float_t fc){
+		// prewarp the cutoff- these are bilinear-transform filters
+		float_t wd = 2 * PI * fc;
+		float_t fs_inv  = 1 / sampleRate;
+		float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
+		float_t g  = wa * fs_inv / 2;
+		// calculate big G value; see Zavalishin p46 The Art of VA Design
+		G = g / (1.0 + g);
+	}
 	
-	float_t doFilterStage(float_t xn);
-	float_t getSampleRate();
-	float_t getStorageRegisterValue();
+	float_t doFilterStage(float_t xn){
+		float_t const v = (xn - z1) * G;
+		float_t const _out = v + z1;
+		z1 = _out + v;
+		return _out;
+	}
+	float_t getSampleRate(){
+		return sampleRate;
+	}
+	float_t getStorageRegisterValue(){
+		return z1;
+	}
 };
 template <typename float_t>
 class CTPTMoogLadderFilter
 {
-public:
-	CTPTMoogLadderFilter(){}
-	~CTPTMoogLadderFilter(){}
+//public:
+//	CTPTMoogLadderFilter(){}
+//	~CTPTMoogLadderFilter(){}
 protected:
 	CTPTMoogFilterStage<float_t> filter1;
 	CTPTMoogFilterStage<float_t> filter2;
@@ -602,9 +643,51 @@ protected:
 	float_t k; // Q control
 	float_t fc; // fc control
 public:
-	inline void initialize(float_t newSampleRate);
-	inline void calculateTPTCoeffs(float_t cutoff, float_t Q);
-	float_t doTPTMoogLPF(float_t xn);
+	inline void initialize(float_t newSampleRate){
+		filter1.initialize(newSampleRate);
+		filter2.initialize(newSampleRate);
+		filter3.initialize(newSampleRate);
+		filter4.initialize(newSampleRate);
+	}
+	inline void calculateTPTCoeffs(float_t cutoff, float_t Q){
+		// 4 sync-tuned filters
+		filter1.setFc(cutoff);
+		filter2.setFc(cutoff);
+		filter3.setFc(cutoff);
+		filter4.setFc(cutoff);
+
+		// NOTE: Q is limited to 20 on the UI to prevent blowing up
+				// Q=0.707->25==>k=0->4
+		k = Q;	//4.0*(Q - 0.707)/(25.0 - 0.707);
+		// ours
+		fc = cutoff;
+	}
+	float_t doTPTMoogLPF(float_t xn){	// calculate g
+		float_t const wd = 2 * PI * fc;
+		float_t const fs_inv  = 1 / (float_t)filter1.getSampleRate();
+		float_t const wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
+		float_t const g  = wa * fs_inv / 2;
+		
+		float_t const G = g * g * g * g;
+		float_t const S = g * g * g * filter1.getStorageRegisterValue() +
+							  g * g * filter2.getStorageRegisterValue() +
+								  g * filter3.getStorageRegisterValue() +
+									  filter4.getStorageRegisterValue();
+		
+		//uis input to filters, straight from book
+		float_t u = (xn - k * S) / (1 + k * G);
+		// four cascades using nested functions
+		float_t filterOut = filter4.doFilterStage
+										(filter3.doFilterStage
+											(filter2.doFilterStage
+												(filter1.doFilterStage
+													(u)
+												 )
+											 )
+										 );
+		// output
+		return filterOut;
+	}
 };
 //==================================================================================
 /* 

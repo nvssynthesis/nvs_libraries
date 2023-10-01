@@ -63,6 +63,14 @@ private:
 
 //==================================================================================
 
+enum class mode_e {
+	LP = 0,
+	HP,
+	BP,
+	AP,
+	NP
+};
+
 template<typename float_t>
 class filter_abstract{
 	static_assert(std::is_floating_point<float_t>::value, "filter_abstract type must be floating point");
@@ -97,6 +105,7 @@ public:
 	virtual void updateResonance(){
 		_q += (_resonanceTarget - _q) * _blockSize_inv;
 	}
+	virtual void setMode(mode_e mode) = 0;
 	//============================================================
 	virtual float_t operator()(float_t input) = 0;
 	virtual float_t operator()(float_t input, float_t cutoff) = 0;
@@ -108,6 +117,7 @@ protected:
 	float_t _cutoffTarget, _resonanceTarget;
 	float_t _w_c, _q;
 	float_t _blockSize_inv;
+	mode_e _mode {mode_e::LP};
 };
 template<typename float_t>
 inline filter_abstract<float_t>::~filter_abstract() { }
@@ -142,17 +152,20 @@ public:
 		this->z1 = y_n + v_n;
 		return nvs::memoryless::clamp<float_t>(y_n, -1000.0, 1000.0);
 	 }
-	
-	float_t tpt_hp(float_t input){
-		return input - tpt_lp(input, {});
-	}
-	float_t tpt_hp(float_t input, float_t cutoff){
-		this->_w_c = cutoff;
-		return input - tpt_lp(input, {});
+	virtual void setMode(mode_e mode) override {
+		if (mode == mode_e::LP)
+			this->_mode = mode;
+		else	// only 2 modes
+			this->_mode = mode_e::HP;
 	}
 	//==============================================================================
 	float_t operator()(float_t input) override {
-		return tpt_lp(input, {});
+		auto lp = tpt_lp(input, {});
+		
+		if (this->_mode == mode_e::LP)
+			return lp;
+		else
+			return input - lp;
 	}
 	float_t operator()(float_t input, float_t cutoff) override {
 		this->_w_c = cutoff;
@@ -188,8 +201,14 @@ public:
 	/* a one pole filter has no resonance. */
 	virtual void setResonanceTarget(float_t) override {}
 	virtual void updateResonance() override {}
+	virtual void setMode(mode_e mode) override {
+		if (mode == mode_e::LP)
+			this->_mode = mode;
+		else	// only 2 modes
+			this->_mode = mode_e::HP;
+	}
 	//=========================================================================
-	float_t lp(float_t x, CutoffToGCallable func){
+	float_t tpt_lp(float_t x, CutoffToGCallable func){
 		auto g = std::invoke(func, this->_w_c, this->_fs_inv);
 		auto x_n = x * g;
 		v_n = x_n + z1;
@@ -197,8 +216,14 @@ public:
 		z1 = x_n + y_n;
 		return y_n;
 	}
+
 	float_t operator()(float_t input) override {
-		return lp(input, {});
+		auto lp = tpt_lp(input, {});
+		
+		if (this->_mode == mode_e::LP)
+			return lp;
+		else
+			return input - lp;
 	}
 	float_t operator()(float_t input, float_t cutoff) override {
 		this->filter_abstract<float_t>::setCutoff(cutoff);
@@ -216,6 +241,10 @@ private:
 	float_t v_n {0.0}, z1 {0.0};
 };
 
+/**
+ TODO:
+	-figure out power loss with non-LP modes
+ */
 template<
 	typename float_t,
 	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
@@ -255,7 +284,27 @@ public:
 		}
 	}
 	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
-	
+	virtual void setMode(mode_e mode) override {
+		if (mode == mode_e::LP){
+			this->_mode = mode;
+			for (auto &p : _poles){
+				p.setMode(mode);
+			}
+		}
+		else if (mode == mode_e::HP){
+			this->_mode = mode_e::HP;
+			for (auto &p : _poles){
+				p.setMode(mode);
+			}
+		}
+		else {	// bandpass
+			this->_mode = mode_e::BP;
+			_poles[0].setMode(mode_e::LP);
+			_poles[1].setMode(mode_e::HP);
+			_poles[2].setMode(mode_e::LP);
+			_poles[3].setMode(mode_e::HP);
+		}
+	}
 	float_t tpt_fourpole(float_t x, CutoffToGCallable func){
 		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
 		float_t const g2 = g*g;
@@ -301,12 +350,14 @@ private:
 };
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 
-// TODO: convert each onepole into a nonlinear onepole
+/** TODO:
+	-fix DC offset that arises after ANY Q has been introduced
+ */
 template<
 	typename float_t,
 	unsigned int N_iters=16,
 	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs) { return cutoff_to_g_slow(f_c, fs);}),
-	class onePole_t=onePole<float_t, CutoffToGCallable>
+	class onePole_t=onePole_nonlinear_df2<float_t, CutoffToGCallable>
 >
 class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
 {
@@ -342,6 +393,27 @@ public:
 		}
 	}
 	/*	no need to override updateResonance, setResonanceTarget, because the poles dont care about their resonance value */
+	virtual void setMode(mode_e mode) override {
+		if (mode == mode_e::LP){
+			this->_mode = mode;
+			for (auto &p : _poles){
+				p.setMode(mode);
+			}
+		}
+		else if (mode == mode_e::HP){
+			this->_mode = mode_e::HP;
+			for (auto &p : _poles){
+				p.setMode(mode);
+			}
+		}
+		else {	// bandpass
+			this->_mode = mode_e::BP;
+			_poles[0].setMode(mode_e::LP);
+			_poles[1].setMode(mode_e::HP);
+			_poles[2].setMode(mode_e::LP);
+			_poles[3].setMode(mode_e::HP);
+		}
+	}
 	
 	float_t tpt_fourpole(float_t input, CutoffToGCallable func){
 		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
@@ -419,6 +491,8 @@ public:
 	virtual void updateResonance() override {}
 	virtual void setResonanceTarget(float_t) override {}
 	
+	virtual void setMode(mode_e) override {}
+	
 	void calcCoefs(const float_t cutoff){
 		const float_t omega = cutoff_to_g_slow(cutoff, this->_fs_inv);
 		const float_t omega2 = omega * omega;
@@ -482,26 +556,69 @@ protected:
 		float_t lp, bp;
 	} _state = { 0.f, 0.f };
 };
-
+#if UNFINISHED_IMPLIMENTATIONS
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 template<typename float_t>
 class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float_t>
 {
 public:
 	//==============================================================================
-	svf_lin_naive();
-	void clear();
-	void setCutoff(float_t wc);
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	void updateCutoff();
-	void setResonance(float_t res);
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
-	void updateResonance();
-	void filter(float_t input);
+	svf_lin_naive()
+	:   w_c(200.f), R(1.f), resonance(1.f)
+	{
+		this->sampleRate = 44100.f;
+		this->fs_inv = 1.f / this->sampleRate;
+		clear();
+	}
+	void clear(){
+		this->_outputs = {0.f, 0.f, 0.f, 0.f };
+		this->_state = { 0.f, 0.f };
+	}
+	void setCutoff(float_t wc){
+		this->w_c = wc;
+		this->_cutoffTarget = w_c;
+	}
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){
+		this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
+	}
+	void updateCutoff(){
+		this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
+	}
+	void setResonance(float_t res){
+		this->resonance = res;
+	 this->R = 1.f / res;
+	}
+	void updateResonance(float_t res_target, float_t oneOverBlockSize){
+		if (res_target > 0.9f)
+		res_target = 0.9f;
+
+		this->resonance += (res_target - this->resonance) * oneOverBlockSize;
+		this->R = 1.f / res_target;
+	}
+	void updateResonance(){
+		if (this->_resonanceTarget > 0.9f)
+		this->_resonanceTarget = 0.9f;
+
+		this->resonance += (this->_resonanceTarget - this->resonance) * this->_oneOverBlockSize;
+		this->R = 1.f / this->_resonanceTarget;
+	}
+	void filter(float_t input){
+		float_t c, d;
+		c = 2.f * sin(PI * w_c * this->fs_inv);
+		d = 2.f * (1.f - pow(resonance, 0.25f));
+
+		if (c > 0.5f) c = 0.5f;
+		if (d > 2.0f) d = 2.f;
+		if (d > (2.f/c - (c * 0.5f)))
+		 d = 2.f/c - (c * 0.5f);
+
+		this->_outputs.np = input - (d * this->_outputs.bp);
+		this->_outputs.lp = this->_outputs.lp + (c * this->_outputs.bp);
+		this->_outputs.hp = this->_outputs.np - this->_outputs.lp;
+		this->_outputs.bp = this->_outputs.bp + (c * this->_outputs.hp);
+	}
 private:
-	
 	float_t w_c, R, resonance;
-	
 };
 //==================================================================================
 /*
@@ -738,6 +855,6 @@ private:
 	float_t f_pi, f_b;
 	float_t b0, b1;
 };
-
+#endif	// end of unfinished re-implimentations
 }   // namespace filters
 }	// namespace nvs

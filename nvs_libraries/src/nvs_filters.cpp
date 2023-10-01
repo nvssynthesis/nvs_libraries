@@ -22,133 +22,11 @@ namespace filters {
 
 //==============================================================================
 
-template<typename float_t>
-float_t fourPole_LP_nonlinear<float_t>::tpt_fourpole(float_t input)
-{
-	g = this->cutoff_to_g(this->w_c);
-	float_t g2 = g * g;
-	G = g2 * g2;
-	s1 = H1.z1;
-	s2 = H2.z1;
-	s3 = H3.z1;
-	s4 = H4.z1;
-	S = g2*g*s1 + g2*s2 + g*s3 + s4;
-	
-	u_n = y_n;  // initial estimation
-	for (int n = 0; n < iters; n++)
-		u_n = input - k * (G * tables.tanh_LUT(u_n) + S);
-	
-	//u_n = ((input) * (1 + k) - k * S) / (1 + k * G);
-	
-	y_n = H4.tpt_lp(H3.tpt_lp(H2.tpt_lp(H1.tpt_lp(u_n))));
-	
-	return y_n;
-}
-template<typename float_t>
-float_t fourPole_LP_nonlinear<float_t>::tpt_fourpole(float_t input, float_t cutoff)
-{
-	g = this->cutoff_to_g(cutoff);
-	float_t g2 = g * g;
-	G = g2 * g2;
-	s1 = H1.z1;
-	s2 = H2.z1;
-	s3 = H3.z1;
-	s4 = H4.z1;
-	S = g2*g*s1 + g2*s2 + g*s3 + s4;
-	
-	u_n = ((input) * (1 + k) - k * S) / (1 + k * G);
-	
-	y_n = H4.tpt_lp(H3.tpt_lp(H2.tpt_lp(H1.tpt_lp(u_n))));
-	
-	return y_n;
-}
 
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 //==============================================================================
-template<typename float_t>
-svf_lin_naive<float_t>::svf_lin_naive()
-:   w_c(200.f), R(1.f), resonance(1.f)
-{
-	this->sampleRate = 44100.f;
-	this->fs_inv = 1.f / this->sampleRate;
-	clear();
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::clear()
-{
-	this->_outputs = {0.f, 0.f, 0.f, 0.f };
-	this->_state = { 0.f, 0.f };
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::setCutoff(float_t wc)
-{
-	this->w_c = wc;
-	this->_cutoffTarget = w_c;
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::updateCutoff(float_t cutoff_target, float_t oneOverBlockSize)
-{
-	this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::updateCutoff()
-{
-	this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::setResonance(float_t res)
-{
-	this->resonance = res;
-	this->R = 1.f / res;
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::updateResonance(float_t res_target, float_t oneOverBlockSize)
-{
-	if (res_target > 0.9f)
-		res_target = 0.9f;
-	
-	this->resonance += (res_target - this->resonance) * oneOverBlockSize;
-	this->R = 1.f / res_target;
-}
-template<typename float_t>
-void svf_lin_naive<float_t>::updateResonance()
-{
-	if (this->_resonanceTarget > 0.9f)
-		this->_resonanceTarget = 0.9f;
-	
-	this->resonance += (this->_resonanceTarget - this->resonance) * this->_oneOverBlockSize;
-	this->R = 1.f / this->_resonanceTarget;
-}
-/*
- void filter(float_t input)
- {
- using namespace nvs_memoryless;
- _outputs.lp = _state.lp + this->w_c * this->fs_inv * _state.bp;
- _outputs.hp = clamp<float_t>((input - (2 * R * _state.bp) - _state.lp), -10.f, 10.f);
- _outputs.bp = _state.bp + this->w_c * this->fs_inv * _outputs.hp;
- 
- // update state
- _state.bp = clamp<float_t>(_outputs.bp, -10.f, 10.f);
- _state.lp = clamp<float_t>(_outputs.lp, -10.f, 10.f);
- }
- */
-template<typename float_t>
-void svf_lin_naive<float_t>::filter(float_t input)
-{
-	float_t c, d;
-	c = 2.f * sin(PI * w_c * this->fs_inv);
-	d = 2.f * (1.f - pow(resonance, 0.25f));
-	
-	if (c > 0.5f) c = 0.5f;
-	if (d > 2.0f) d = 2.f;
-	if (d > (2.f/c - (c * 0.5f)))
-		d = 2.f/c - (c * 0.5f);
-	
-	this->_outputs.np = input - (d * this->_outputs.bp);
-	this->_outputs.lp = this->_outputs.lp + (c * this->_outputs.bp);
-	this->_outputs.hp = this->_outputs.np - this->_outputs.lp;
-	this->_outputs.bp = this->_outputs.bp + (c * this->_outputs.hp);
-}
+
+
 
 //==================================================================================
 /*
@@ -403,33 +281,7 @@ float_t dcBlock<float_t>::filter(float_t x)
 	xz1 = x;
 	return yz1;
 }
-//===============================================================================
-// PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
 
-
-
-
-
-template<typename float_t>
-float_t CTPTMoogLadderFilter<float_t>::doTPTMoogLPF(float_t xn)
-{
-	// calculate g
-	float_t wd = 2 * PI * fc;
-	float_t fs_inv  = 1 / (float_t)filter1.getSampleRate();
-	float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
-	float_t g  = wa * fs_inv / 2;
-	float_t G = g * g * g * g;
-	float_t S = g * g * g * filter1.getStorageRegisterValue() +
-	g * g * filter2.getStorageRegisterValue() +
-	g * filter3.getStorageRegisterValue() +
-	filter4.getStorageRegisterValue();
-	//uis input to filters, straight from book
-	float_t u = (xn - k * S) / (1 + k * G);
-	// four cascades using nested functions
-	float_t filterOut = filter4.doFilterStage(filter3.doFilterStage (filter2.doFilterStage(filter1.doFilterStage(u))));
-	// output
-	return filterOut;
-}
 //==================================================================================
 /* 
  time-variant allpass filter

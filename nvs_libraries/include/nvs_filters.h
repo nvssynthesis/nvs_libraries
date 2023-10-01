@@ -315,9 +315,12 @@ public:
 		float_t const s4 = _poles[3].getState();
 		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
 
+		float_t k = this->_q;
+		if (this->_mode == mode_e::BP) k *= -1.f;
+
 		// before i was trying to re-emphasize input sig using (x * (1 + this->_q)) instead of x
-		float_t u_n = (x - this->_q * S)
-					/ (1 + this->_q * G);
+		float_t u_n = (x - k * S)
+					/ (1 + k * G);
 		
 		float_t y_n = _poles[3]
 						(_poles[2]
@@ -425,10 +428,13 @@ public:
 		float_t const s4 = _poles[3].getState();
 		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
 		
+		float_t k = this->_q;
+		if (this->_mode == mode_e::BP) k *= -1.f;
+
 		u_n = y_n;  // initial estimation
 		for (auto n = 0U; n < N_iters; n++){
 			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
-			u_n = input - this->_q * (G * tanh(tmp) + S);
+			u_n = input - k * (G * tanh(tmp) + S);
 		}
 		y_n = _poles[3]
 				(_poles[2]
@@ -556,7 +562,6 @@ protected:
 		float_t lp, bp;
 	} _state = { 0.f, 0.f };
 };
-#if UNFINISHED_IMPLIMENTATIONS
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 template<typename float_t>
 class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float_t>
@@ -620,6 +625,7 @@ public:
 private:
 	float_t w_c, R, resonance;
 };
+#if UNFINISHED_IMPLIMENTATIONS
 //==================================================================================
 /*
  nonlinear state-variable filter using fourth-order runge-kutta

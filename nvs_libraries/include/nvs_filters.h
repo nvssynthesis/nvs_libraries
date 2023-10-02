@@ -549,17 +549,45 @@ class dcBlock   :   public filter_abstract <float_t>
 public:
 	dcBlock();
 	dcBlock(float_t sampleRate);
-	void setSampleRate(float_t sampleRate);
-	void clear();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){ }
-	void updateResonance(float_t res_target, float_t oneOverBlockSize){ }
-	void updateR(float_t R_target, float_t oneOverBlockSize);
-	float_t filter(float_t x);
+//	void setSampleRate(float_t sampleRate);
+	void clear() override {
+		_xz1 = _yz1 = 0.f;
+	 }
+	////
+	virtual void setCutoffTarget(float_t) override {}
+	virtual void setCutoff(float_t) override {}
+	virtual void updateCutoff() override {}
+	virtual void setResonanceTarget(float_t ) override {}
+	virtual void setResonance(float_t) override {}
+	virtual void updateResonance() override {}
+	virtual void setMode(mode_e) override {}
+
+	void setR(float_t R){
+		R = nvs::memoryless::clamp<float_t>(R, (float_t)0.f, (float_t)1.f);
+		this->_R = R;
+	}
+	void updateR(float_t R_target, float_t oneOverBlockSize){
+		_R += (R_target - _R) * oneOverBlockSize;
+	}
+	float_t filter(float_t x)
+	{// y[i] = x[i] - x[i - 1] + R * y[i - 1];
+		_yz1 = x - _xz1 + _R * _yz1;
+		_xz1 = x;
+		return _yz1;
+	 }
+	float_t operator()(float_t input) override {
+		return filter(input);
+	}
+	float_t operator()(float_t input, float_t) override {
+		return operator()(input);
+	}
+	float_t operator()(float_t input, float_t, float_t) override {
+		return operator()(input);
+	}
 private:
-	float_t R, xz1, yz1;
-	float_t sample_rate;
+	float_t _R{0.995f}, _xz1{0.f}, _yz1{0.f};
 };
-//==================================================================================
+//=======================================================================
 /*
  time-variant allpass filter
  */
@@ -567,30 +595,170 @@ template<typename float_t>
 class tvap  :   public filter_abstract<float_t>
 {
 public:
-	tvap() {}
-	~tvap() {}
-	//==============================================================================
-	virtual void setSampleRate(float_t sample_rate);
-	
-	void clear();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
+	//===============================================================
+	void setSampleRate(float_t sample_rate) override {
+		this->filter_abstract<float_t>::setSampleRate(sample_rate);
+		dcFilt.setSampleRate(sample_rate);	// doesn't matter for current implementation but may in the future
+		lp.setSampleRate(sample_rate);
+		lp.setCutoff(sample_rate * 0.125f);
+	}
+	void setMode(mode_e) override {
+		// ignore request, always allpass
+		this->_mode = mode_e::AP;
+	};
+	void clear() override {
+		sp->z1 = sp->z2 = sp->fb_proc = 0.f;
+	}
+	//===============================================================
+
+	void updateCutoff() override {
+		update_f_pi();
+	}
+	void updateResonance() override {
+		update_f_b();
+	}
 	// function aliases just to have more meaningful names
-	void update_f_pi (float_t f_pi_target, float_t oneOverBlockSize);
-	void update_f_b(float_t f_b_target, float_t oneOverBlockSize);
+	void update_f_pi (){
+		memoryless::clamp_low(this->_cutoffTarget, (float_t)0.f);
+		f_pi += (this->_cutoffTarget - f_pi) * this->_blockSize_inv;
+		calc_b1();
+	}
+	void update_f_b(){
+		//if (f_b <= 0) f_b = 0.0000000001;
+//		constexpr float_t min_f_b = std::numeric_limits<float_t>::
+		
+		f_b += (this->_resonanceTarget - f_b) * this->_blockSize_inv;
+		f_b_to_b0();
+	}
 	
-	void calc_b1(void);
-	void f_b_to_b0(void);
+	void calc_b1(){
+		float_t d = -1 * cos((2.f * PI * f_pi) * this->_fs_inv);
+		float_t c = (tan(PI * f_b * this->_fs_inv) - 1.f) / (tan(PI * f_b * this->_fs_inv) + 1.f);
+		float_t r1 = acos(-1.f * c);
+		float_t r2 = acos(-1.f * d);
+		b1 = cos(r1) * (1.f + cos(r2));
+	}
+	void f_b_to_b0(){
+		float_t c = (tan(PI * f_b * this->_fs_inv) - 1.f) / (tan(PI * f_b * this->_fs_inv) + 1.f);
+		float_t r1 = acos(-1.f * c);
+		b0 = cos(r1);
+	}
 	
-	float_t f_pi2r2(float_t _f_pi);
-	float_t f_b2r1(float_t _f_b);
+	float_t f_pi2r2(float_t _f_pi){
+		float_t d = -1 * cos((2.f * PI * _f_pi) * this->_fs_inv);
+		float_t r2 = acos(-d);
+		return r2;
+	}
+	float_t f_b2r1(float_t _f_b){
+		float_t tmp = tan(PI * _f_b * this->_fs_inv);
+		float_t c = (tmp - 1.f) / (tmp + 1.f);
+		float_t r1 = acos(-c);
+		return r1;
+	}
 	
-	float_t filter(float_t x_n);
+	float_t filter(float_t x_n) {
+		/* float_t _y1 = state.y1;
+		float_t _y2 = state.y2;
+		float_t _x1 = state.x1;
+		float_t _x2 = state.x2;
+		float_t y_n = b0 * x_n - b1 * _x1 + _x2 + b1 * _y1 - b0 * _y2;
+		state.y2 = _y1;
+		state.y1 = y_n;
+		state.x2 = _x1;
+		state.x1 = x_n;
+		return y_n; */
+		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+		float_t tmp [3];
+		_r1 = f_b2r1(f_b);
+		_r2 = f_pi2r2(f_pi);
+
+		_cr1 = cos(_r1);
+		_sr1 = sin(_r1);
+		_cr2 = cos(_r2);
+		_sr2 = sin(_r2);
+		//tmp[0] = _x_n;
+		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
+		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
+
+		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
+		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
+		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
+
+		state.z1 = tmp[1];
+		state.z2 = tmp[2];
+
+		return tmp[0];
+	}
+	float_t operator()(float_t input) override {
+		return filter(input);
+	}
+	float_t operator()(float_t inp, float_t cut) override {
+		this->setCutoff(cut);
+		return operator()(inp);
+	}
+	float_t operator()(float_t inp, float_t cut, float_t reso) override {
+		this->setResonance(reso);
+		return operator()(inp, cut);
+	}
 	
 	// should be in memoryless but got linker error
-	inline float_t unboundSat2(float_t x);
+	float_t unboundSat2(float_t x){
+		float_t num = 2.0 * x;
+		float_t denom = 1.0 + sqrt(1.0 + abs(4.0 * x));
+		return num / denom;
+	}
 	
-	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b);
+	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b){
+		float_t _f_pi_n, _f_b_n;
+		_f_pi_n = f_pi;
+		_f_b_n = f_b;
+
+		fb_f_pi *= f_pi;
+		fb_f_pi *= 1000.0;
+		fb_f_b *= f_pi;
+		fb_f_b *= 1000.0;
+
+		_f_pi_n += unboundSat2(state.fb_proc * fb_f_pi)* 10.0;
+		_f_b_n  += unboundSat2(state.fb_proc * fb_f_b) * 10.0;
+
+		// if (_f_b_n < 0.f) _f_b_n = 0.f;
+		if (_f_b_n < 0.0)
+		_f_b_n = exp(_f_b_n);
+		else
+		_f_b_n += 1.0;
+
+		float_t highLimit = (1.f / this->_fs_inv) * 0.495f;
+		if (_f_pi_n >= highLimit) _f_pi_n = highLimit;
+		if (_f_b_n >= highLimit) _f_b_n = highLimit;
+
+		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+		float_t tmp[3];
+		_r1 = f_b2r1(_f_b_n);
+		_r2 = f_pi2r2(_f_pi_n);
+
+		_cr1 = cos(_r1);
+		_sr1 = sin(_r1);
+		_cr2 = cos(_r2);
+		_sr2 = sin(_r2);
+		//tmp[0] = _x_n;
+		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
+		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
+
+		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
+		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
+		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
+
+		state.z1 = tmp[1];
+		state.z2 = tmp[2];
+
+
+		float_t fb_filt = dcFilt(tmp[0]);   // used to feed output to modulate control inputs
+		fb_filt = lp(fb_filt);
+		//fb_filt = 0.5f * (fb_filt + _fb_filt_z1);
+		state.fb_proc = fb_filt;
+
+		return tmp[0];
+	}
 	nvs::memoryless::trigTables<float_t> _LUT;
 	
 protected:

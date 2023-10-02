@@ -27,6 +27,7 @@ namespace filters {
 //==============================================================================
 
 
+#if UNFINISHED_IMPLIMENTATIONS
 
 //==================================================================================
 /*
@@ -39,6 +40,7 @@ namespace filters {
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
  */
+
 template<typename float_t>
 svf_nl_rk<float_t>::svf_nl_rk()
 : _oversample_factor(1), h(0.000022675736961),
@@ -473,6 +475,8 @@ template class CTPTMoogLadderFilter<float>;
 template class CTPTMoogLadderFilter<double>;
 template class tvap<float>;
 template class tvap<double>;
+
+#endif	// unfinished implementations
 
 }	// namespace filters
 }	// namespace nvs

@@ -542,6 +542,74 @@ private:
 	float_t y;
 };
 
+//==================================================================================
+template<typename float_t>
+class dcBlock   :   public filter_abstract <float_t>
+{
+public:
+	dcBlock();
+	dcBlock(float_t sampleRate);
+	void setSampleRate(float_t sampleRate);
+	void clear();
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){ }
+	void updateResonance(float_t res_target, float_t oneOverBlockSize){ }
+	void updateR(float_t R_target, float_t oneOverBlockSize);
+	float_t filter(float_t x);
+private:
+	float_t R, xz1, yz1;
+	float_t sample_rate;
+};
+//==================================================================================
+/*
+ time-variant allpass filter
+ */
+template<typename float_t>
+class tvap  :   public filter_abstract<float_t>
+{
+public:
+	tvap() {}
+	~tvap() {}
+	//==============================================================================
+	virtual void setSampleRate(float_t sample_rate);
+	
+	void clear();
+	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
+	void updateResonance(float_t res_target, float_t oneOverBlockSize);
+	// function aliases just to have more meaningful names
+	void update_f_pi (float_t f_pi_target, float_t oneOverBlockSize);
+	void update_f_b(float_t f_b_target, float_t oneOverBlockSize);
+	
+	void calc_b1(void);
+	void f_b_to_b0(void);
+	
+	float_t f_pi2r2(float_t _f_pi);
+	float_t f_b2r1(float_t _f_b);
+	
+	float_t filter(float_t x_n);
+	
+	// should be in memoryless but got linker error
+	inline float_t unboundSat2(float_t x);
+	
+	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b);
+	nvs::memoryless::trigTables<float_t> _LUT;
+	
+protected:
+	typedef struct tvapstate {
+		//float_t x1, x2, y1, y2;
+		float_t z1, z2;
+		float_t fb_proc;  // processed fed back output sample
+	} _tvapstate;
+	_tvapstate state = {.z1 = 0.f, .z2 = 0.f, .fb_proc = 0.f};
+	_tvapstate *sp = &state;
+	
+	dcBlock<float_t> dcFilt;
+	onePole<float_t> lp;
+private:
+	float_t f_pi, f_b;
+	float_t b0, b1;
+};
+
+//==================================================================================
 
 template<typename float_t>
 class svf_prototype
@@ -693,23 +761,6 @@ private:
 	float_t rise, riseInc, fall, fallInc, _vOut;
 };
 
-template<typename float_t>
-class dcBlock   :   public filter_abstract <float_t>
-{
-public:
-	dcBlock();
-	dcBlock(float_t sampleRate);
-	void setSampleRate(float_t sampleRate);
-	void clear();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){ }
-	void updateResonance(float_t res_target, float_t oneOverBlockSize){ }
-	void updateR(float_t R_target, float_t oneOverBlockSize);
-	float_t filter(float_t x);
-private:
-	float_t R, xz1, yz1;
-	float_t sample_rate;
-};
-
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
 template<typename float_t>
@@ -812,55 +863,7 @@ public:
 		return filterOut;
 	}
 };
-//==================================================================================
-/* 
- time-variant allpass filter
- */
-template<typename float_t>
-class tvap  :   public filter_abstract<float_t>
-{
-public:
-	tvap() {}
-	~tvap() {}
-	//==============================================================================
-	virtual void setSampleRate(float_t sample_rate);
-	
-	void clear();
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
-	// function aliases just to have more meaningful names
-	void update_f_pi (float_t f_pi_target, float_t oneOverBlockSize);
-	void update_f_b(float_t f_b_target, float_t oneOverBlockSize);
-	
-	void calc_b1(void);
-	void f_b_to_b0(void);
-	
-	float_t f_pi2r2(float_t _f_pi);
-	float_t f_b2r1(float_t _f_b);
-	
-	float_t filter(float_t x_n);
-	
-	// should be in memoryless but got linker error
-	inline float_t unboundSat2(float_t x);
-	
-	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b);
-	nvs::memoryless::trigTables<float_t> _LUT;
-	
-protected:
-	typedef struct tvapstate {
-		//float_t x1, x2, y1, y2;
-		float_t z1, z2;
-		float_t fb_proc;  // processed fed back output sample
-	} _tvapstate;
-	_tvapstate state = {.z1 = 0.f, .z2 = 0.f, .fb_proc = 0.f};
-	_tvapstate *sp = &state;
-	
-	dcBlock<float_t> dcFilt;
-	onePole<float_t> lp;
-private:
-	float_t f_pi, f_b;
-	float_t b0, b1;
-};
+
 #endif	// end of unfinished re-implimentations
 }   // namespace filters
 }	// namespace nvs

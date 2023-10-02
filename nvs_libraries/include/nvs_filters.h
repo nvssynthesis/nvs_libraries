@@ -547,9 +547,6 @@ template<typename float_t>
 class dcBlock   :   public filter_abstract <float_t>
 {
 public:
-	dcBlock();
-	dcBlock(float_t sampleRate);
-//	void setSampleRate(float_t sampleRate);
 	void clear() override {
 		_xz1 = _yz1 = 0.f;
 	 }

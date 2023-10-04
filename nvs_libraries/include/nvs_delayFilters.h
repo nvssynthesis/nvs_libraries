@@ -10,6 +10,12 @@ constexpr bool is_power_of_2(int v){
 
 namespace delays {
 
+enum class interp_e {
+	floor = 0,
+	linear,
+	cubic
+};
+
 template<uint32_t _maxDelSize, typename float_t=float>
 class Delay {
 	static_assert(is_power_of_2(_maxDelSize), "delay size must be power of two");
@@ -23,21 +29,23 @@ public:
 		clear();
 		isInitialized = true;
 	}
-	
-	void setSampleRate(double fs)
-	{
+	void clear() {
+		_buffer.fill(0.f);
+		/*
+		int n = _maxDelSize;
+		while (n > 0)
+		{
+			n -= 1;     // pre-decrement
+			_buffer[n] = 0.f;
+		}
+		 */
+	}
+	void setSampleRate(double fs) {
 		fractionalIdx_t ms = (delTimeSamps / sampleRate) * 1000.0;    // maintain former delay time
 		sampleRate = (fs > 0.0) ? fs : 44100.0;
 		setDelayTimeMS(ms);
 	}
-	enum class interp {
-		floor = 0,
-		linear,
-		cubic
-	};
-	inline fractionalIdx_t getEffectiveDelayTimeSamps(){
-		return delTimeSamps + 1.0;
-	}
+
 	float_t (Delay::*doTheTick)(float_t);
 	// could also implement by multiplication of 1 or zero with different outputs
 	// copy pointer to function and ensure it's really pointing there properly
@@ -96,14 +104,14 @@ public:
 		return y;
 	}
 	
-	void setInterpolation(int _interpType) {
-		this->interpType = _interpType;
-		switch (_interpType) {
-			case 0: // look at address of doTheTick, make sure that's the address that actually gets returned in the tick function
+	void setInterpolation(interp_e interp) {
+		interpType = interp;
+		switch (static_cast<int>(interpType)) {
+			case static_cast<int>(interp_e::floor): // look at address of doTheTick, make sure that's the address that actually gets returned in the tick function
 				doTheTick = &Delay::tick_floor;
-			case 1:
+			case static_cast<int>(interp_e::linear):
 				doTheTick = &Delay::tick_linear;
-			case 2:
+			case static_cast<int>(interp_e::cubic):
 				doTheTick = &Delay::tick_cubic;
 		}
 	}
@@ -124,6 +132,7 @@ public:
 		setDelayTimeSamps(t);
 	}
 	
+	[[deprecated("no oneOverBlockSize argument")]]
 	void updateDelayTimeMS(float target, float oneOverBlockSize) {
 		target = target * 0.001f * sampleRate; // convert to samples
 		float inc = (target - delTimeSamps) * oneOverBlockSize;
@@ -131,28 +140,19 @@ public:
 		delTimeSamps += inc;
 	}
 	unsigned int getDelaySize() const { return _maxDelSize; }
-	
-	void clear() {
-		_buffer.fill(0.f);
-		/*
-		int n = _maxDelSize;
-		while (n > 0)
-		{
-			n -= 1;     // pre-decrement
-			_buffer[n] = 0.f;
-		}
-		 */
+	inline fractionalIdx_t getEffectiveDelayTimeSamps() const {
+		return delTimeSamps + 1.0;
 	}
 	[[deprecated("unnecessary, the object is initialized upon construction")]]
-	bool ready() {
+	bool ready() const {
 		return isInitialized;
 	}
 private:
-	fractionalIdx_t delTimeSamps, sampleRate;
+	fractionalIdx_t delTimeSamps {1.0}, sampleRate{44100.0};
 	std::array<float_t, _maxDelSize> _buffer;
 	integralIdx_t delMask;
 	integralIdx_t wHead {0}, rHead;
-	short int interpType;
+	interp_e interpType;
 	[[deprecated("unnecessary, the object is initialized upon construction")]]
 	bool isInitialized {false};
 };

@@ -3,99 +3,94 @@
 #include "nvs_memoryless.h"
 
 namespace nvs {
+
+constexpr bool is_power_of_2(int v){
+	return v && ((v & (v - 1)) == 0);
+}
+
 namespace delays {
 
+template<uint32_t _maxDelSize, typename float_t=float>
 class Delay {
+	static_assert(is_power_of_2(_maxDelSize), "delay size must be power of two");
+	static_assert(std::is_floating_point<float_t>::value,
+										"float_t type must be floating point");
+	using fractionalIdx_t = double;
+	using integralIdx_t = decltype(_maxDelSize);
 public:
-	Delay() :   Delay(8192, 44100.f)    {}
-	Delay(unsigned int _delSize, float sample_rate)
+	Delay()	:	delMask(_maxDelSize - 1)
 	{
-		isInitialized = false;
-		// convert delay size to next power of 2
-		_delSize = (unsigned int)(_delSize + 0.5);
-		unsigned int log2 = 0;
-		if (_delSize == 0) log2 =  13; // gives 8192
-		if (_delSize != 1)
-		{
-			while (_delSize > 1)  {
-				_delSize >>= 1;
-				log2++; }
-		}
-		_delSize = log2;
-		delSize = pow(2, _delSize);
-		delBuff = new float[delSize];
-		delMask = delSize - 1;
-		wHead = 0;
-		sampleRate = sample_rate;
-		T = 1.f / sample_rate;
 		clear();
 		isInitialized = true;
 	}
-	~Delay() {delete[] delBuff;}
 	
-	void setSampleRate(float fs)
+	void setSampleRate(double fs)
 	{
-		float ms = (delTimeSamps / sampleRate) * 1000.f;    // maintain former delay time
-		sampleRate = (fs > 0.f) ? fs : 44100.f;
-		T = 1.f / sampleRate;
+		fractionalIdx_t ms = (delTimeSamps / sampleRate) * 1000.0;    // maintain former delay time
+		sampleRate = (fs > 0.0) ? fs : 44100.0;
 		setDelayTimeMS(ms);
 	}
-	enum interp {
+	enum class interp {
 		floor = 0,
 		linear,
 		cubic
 	};
-	inline float getEffectiveDelayTimeSamps(){
-		return delTimeSamps + 1;// > 1.f ? delTimeSamps : 1.f;
+	inline fractionalIdx_t getEffectiveDelayTimeSamps(){
+		return delTimeSamps + 1.0;
 	}
-	float (Delay::*doTheTick)(float);
+	float_t (Delay::*doTheTick)(float_t);
 	// could also implement by multiplication of 1 or zero with different outputs
 	// copy pointer to function and ensure it's really pointing there properly
 	// also consider that this MUST be assigned already on initialized
-	float tick(float input) {
+	float_t tick(float_t input) {
 		//return (this->*doTheTick)(input);
 		return (this->*doTheTick)(input);
 	}
 	
-	float tick_floor(float input) {
-		rHead = wHead + (int)getEffectiveDelayTimeSamps();
+	float_t tick_floor(float_t input) {
+		rHead = wHead + (integralIdx_t)getEffectiveDelayTimeSamps();
 		rHead &= delMask;
-		float y = *(delBuff + rHead);
+		float_t y = _buffer[rHead];
 		
-		*(delBuff + wHead) = input;
+		_buffer[wHead] = input;
 		wHead--;
 		wHead &= delMask;
 		return y;
 	}
-	float tick_linear(float input) {
-		rHead = wHead + (int)getEffectiveDelayTimeSamps();
-		float frac = getEffectiveDelayTimeSamps() - (float)((int)getEffectiveDelayTimeSamps());
+	float_t tick_linear(float_t input) {
+		fractionalIdx_t const dTime = getEffectiveDelayTimeSamps();
+		integralIdx_t const dTime_floor = static_cast<integralIdx_t>(dTime);
+		
+		rHead = wHead + dTime_floor;
 		rHead &= delMask;
-		float y = *(delBuff + rHead) * (1.f - frac);
-		int rHeadTmp = rHead + 1;
+		
+		fractionalIdx_t const frac = dTime - static_cast<fractionalIdx_t>(dTime_floor);
+		float_t y = _buffer[rHead] * (1.f - frac);
+		
+		auto rHeadTmp = rHead + 1;
 		rHeadTmp &= delMask;
-		y += *(delBuff + rHeadTmp) * (frac);
+		y += _buffer[rHeadTmp] * (frac);
 		
-		*(delBuff + wHead) = input;
+		_buffer[wHead] = input;
 		wHead--;
 		wHead &= delMask;
 		return y;
 	}
-	float tick_cubic(float input)   {
+	float_t tick_cubic(float_t input) {
 		rHead = wHead + (int)getEffectiveDelayTimeSamps();
-		float frac = getEffectiveDelayTimeSamps() - (float)((int)getEffectiveDelayTimeSamps());
+		fractionalIdx_t frac = getEffectiveDelayTimeSamps() -
+							(fractionalIdx_t)((int)getEffectiveDelayTimeSamps());
 		
-		float xm1, x0, x1, x2, a, b, c, y;
-		xm1 = delBuff[(rHead - 1) & delMask];
-		x0  = delBuff[(rHead + 0) & delMask];
-		x1  = delBuff[(rHead + 1) & delMask];
-		x2  = delBuff[(rHead + 2) & delMask];
-		a = (3.f * (x0-x1) - xm1 + x2) / 2.f;
-		b = 2.f*x1 + xm1 - (5.f*x0 + x2) / 2.f;
-		c = (x1 - xm1) / 2.f;
-		y = (((a * frac) + b) * frac + c) * frac + x0;
+		float_t xm1 = _buffer[(rHead - 1) & delMask];
+		float_t x0  = _buffer[(rHead + 0) & delMask];
+		float_t x1  = _buffer[(rHead + 1) & delMask];
+		float_t x2  = _buffer[(rHead + 2) & delMask];
+		float_t a = (3.f * (x0-x1) - xm1 + x2) / 2.f;
+		float_t b = 2.f*x1 + xm1 - (5.f*x0 + x2) / 2.f;
+		float_t c = (x1 - xm1) / 2.f;
+		float_t y = (((a * frac) + b) * frac + c) * frac + x0;
 		
-		*(delBuff + wHead) = input;
+		_buffer[wHead] = input;
 		wHead--;
 		wHead &= delMask;
 		return y;
@@ -115,63 +110,59 @@ public:
 	// multiple tick functions for different interpolations,
 	// then use function pointer to set tick to that function
 	
-	
-	
-	float tap(unsigned int writeOffset)
-	{
-		unsigned int pos = wHead + writeOffset;
+	float tap(unsigned int writeOffset) const {
+		integralIdx_t pos = wHead + writeOffset;
 		pos &= pos;
-		return *(delBuff + pos);
+		return _buffer[pos];
 	}
-	void setDelayTimeSamps(float t){
-		delTimeSamps = (t <= delSize) ? ((t > 0.f) ? t : 0.f) : delSize;
+	void setDelayTimeSamps(double t){
+		delTimeSamps = nvs::memoryless::clamp(t, 0.0, (double)_maxDelSize);
 	}
-	void setDelayTimeMS(float t)
+	void setDelayTimeMS(double t)
 	{
-		t = t * 0.001f * sampleRate;
+		t = t * 0.001 * sampleRate;
 		setDelayTimeSamps(t);
 	}
-	//    float getDelayTimeMS(){
-	//    }
 	
-	void updateDelayTimeMS(float target, float oneOverBlockSize)
-	{
+	void updateDelayTimeMS(float target, float oneOverBlockSize) {
 		target = target * 0.001f * sampleRate; // convert to samples
 		float inc = (target - delTimeSamps) * oneOverBlockSize;
 		inc = nvs::memoryless::atan_aprox(inc);
 		delTimeSamps += inc;
-		
 	}
-	unsigned int getDelaySize() { return delSize; }
+	unsigned int getDelaySize() const { return _maxDelSize; }
 	
 	void clear() {
-		int n = delSize;
+		_buffer.fill(0.f);
+		/*
+		int n = _maxDelSize;
 		while (n > 0)
 		{
 			n -= 1;     // pre-decrement
-			*(delBuff + n) = 0.f;
+			_buffer[n] = 0.f;
 		}
+		 */
 	}
-	bool ready(void)
-	{
+	[[deprecated("unnecessary, the object is initialized upon construction")]]
+	bool ready() {
 		return isInitialized;
 	}
 private:
-	float delTimeSamps, sampleRate, T; // T is inverse of sample rate
-	float *delBuff;
-	unsigned int delSize, delMask;
-	unsigned int wHead, rHead;
+	fractionalIdx_t delTimeSamps, sampleRate;
+	std::array<float_t, _maxDelSize> _buffer;
+	integralIdx_t delMask;
+	integralIdx_t wHead {0}, rHead;
 	short int interpType;
-	bool isInitialized;
+	[[deprecated("unnecessary, the object is initialized upon construction")]]
+	bool isInitialized {false};
 };
 
-
+#if IMPLEMENTED
 class AllpassDelay : public Delay {
 public:
 	AllpassDelay() :   AllpassDelay(8192, 44100.f) {}
 	AllpassDelay(unsigned int _delSize, float sample_rate)
 	:  Delay(_delSize, sample_rate), g(0.f), z(0.f){}
-	~AllpassDelay() {}
 	
 	void update_g(float g_target, float oneOverBlockSize)
 	{
@@ -193,6 +184,7 @@ public:
 private:
 	float g, z;
 };
+#endif
 
 }	// namespace delay
 }	// namespace nvs

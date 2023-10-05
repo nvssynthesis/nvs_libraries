@@ -157,7 +157,6 @@ private:
 	bool isInitialized {false};
 };
 
-
 template<uint32_t _maxDelSize, typename float_t=float>
 class AllpassDelay : public Delay<_maxDelSize, float_t> {
 public:

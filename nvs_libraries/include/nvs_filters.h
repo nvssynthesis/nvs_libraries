@@ -355,6 +355,8 @@ private:
 // so far quite tame, since the only nonlinearity is in the feedback path. 
 /** TODO:
 	-fix DC offset that arises after ANY Q has been introduced
+	-WHY DID THAT PROBLEM JUST STOP? what did i change?
+	-and also, now in highpass mode, it explodes easily, and when you reload the plugin, it remains silent... in reaper at least...
  */
 template<
 	typename float_t,
@@ -429,12 +431,14 @@ public:
 		float_t const S = g2*g*s1 + g2*s2 + g*s3 + s4;
 		
 		float_t k = this->_q;
-		if (this->_mode == mode_e::BP) k *= -1.f;
+		if (this->_mode == mode_e::BP) {k *= -1.f;}
 
 		u_n = y_n;  // initial estimation
 		for (auto n = 0U; n < N_iters; n++){
 			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
 			u_n = input - k * (G * tanh(tmp) + S);
+			assert(u_n == u_n);
+			assert(!isinf(u_n));
 		}
 		y_n = _poles[3]
 				(_poles[2]
@@ -444,7 +448,8 @@ public:
 						 )
 					 )
 				 );
-		
+		assert(y_n == y_n);
+		assert(!isinf(y_n));
 //		y_n = tanh(y_n);
 		return y_n;
 	}
@@ -801,49 +806,20 @@ class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float
 {
 public:
 	//==============================================================================
-	svf_lin_naive()
-	:   w_c(200.f), R(1.f), resonance(1.f)
-	{
-		this->sampleRate = 44100.f;
-		this->fs_inv = 1.f / this->sampleRate;
-		clear();
+	void clear() override {
+		this->_outputs = {.lp{0.f}, .bp{0.f}, .hp{0.f}, .np{0.f} };
+		this->_state = { .lp{0.f}, .bp{0.f} };
 	}
-	void clear(){
-		this->_outputs = {0.f, 0.f, 0.f, 0.f };
-		this->_state = { 0.f, 0.f };
-	}
-	void setCutoff(float_t wc){
-		this->w_c = wc;
-		this->_cutoffTarget = w_c;
-	}
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize){
-		this->w_c += (cutoff_target - this->w_c) * oneOverBlockSize;
-	}
-	void updateCutoff(){
-		this->w_c += (this->_cutoffTarget - this->w_c) * this->_oneOverBlockSize;
-	}
-	void setResonance(float_t res){
-		this->resonance = res;
-	 this->R = 1.f / res;
-	}
-	void updateResonance(float_t res_target, float_t oneOverBlockSize){
-		if (res_target > 0.9f)
-		res_target = 0.9f;
-
-		this->resonance += (res_target - this->resonance) * oneOverBlockSize;
-		this->R = 1.f / res_target;
-	}
-	void updateResonance(){
-		if (this->_resonanceTarget > 0.9f)
-		this->_resonanceTarget = 0.9f;
-
-		this->resonance += (this->_resonanceTarget - this->resonance) * this->_oneOverBlockSize;
-		this->R = 1.f / this->_resonanceTarget;
+	virtual void setResonanceTarget(float_t res_target) override {
+		if (res_target > 0.9f){
+			res_target = 0.9f;
+		}
+		this->filter_abstract<float_t>::setResonanceTarget(res_target);
 	}
 	void filter(float_t input){
 		float_t c, d;
-		c = 2.f * sin(PI * w_c * this->fs_inv);
-		d = 2.f * (1.f - pow(resonance, 0.25f));
+		c = 2.f * sin((float_t)PI * this->_w_c * this->_fs_inv);
+		d = 2.f * (1.f - pow(this->_q, 0.25f));
 
 		if (c > 0.5f) c = 0.5f;
 		if (d > 2.0f) d = 2.f;
@@ -855,10 +831,41 @@ public:
 		this->_outputs.hp = this->_outputs.np - this->_outputs.lp;
 		this->_outputs.bp = this->_outputs.bp + (c * this->_outputs.hp);
 	}
-private:
-	float_t w_c, R, resonance;
+	void setMode(mode_e mode) override {
+		if (mode == (mode_e::AP)){
+			mode = mode_e::NP;
+		}
+		this->_mode = mode;
+	}
+	//============================================================
+	float_t operator()(float_t input) override {
+		filter(input);
+		switch (static_cast<int>(this->_mode)) {
+			case static_cast<int>(mode_e::LP):
+				return this->_outputs.lp;
+				break;
+			case static_cast<int>(mode_e::HP):
+				return this->_outputs.hp;
+				break;
+			case static_cast<int>(mode_e::BP):
+				return this->_outputs.bp;
+				break;
+			case static_cast<int>(mode_e::NP):
+				return this->_outputs.np;
+				break;
+		}
+		return 0.f;
+	}
+	float_t operator()(float_t input, float_t cutoff) override {
+		this->setCutoff(cutoff);
+		return operator()(input);
+	}
+	float_t operator()(float_t inp, float_t cut, float_t res) override {
+		this->setResonance(res);
+		return operator()(inp, cut);
+	}
 };
-#if UNFINISHED_IMPLIMENTATIONS
+
 //==================================================================================
 /*
  nonlinear state-variable filter using fourth-order runge-kutta
@@ -873,57 +880,130 @@ private:
 template<typename float_t>
 class svf_nl_rk :   public filter_abstract<float_t>, public svf_prototype<float_t>
 {
+	using base = filter_abstract<float_t>;
 public:
-	svf_nl_rk();
-	void setSampleRate(float_t sample_rate);
-	void set_oversample(int oversample_factor);
-	void clear();
+	svf_nl_rk() {
+		for (int i = 0; i < 2; i++) {
+			deriv1[i] = deriv2[i] = deriv3[i] = deriv4[i] = 0.f;
+		}
+	}
+	void setSampleRate(float_t sample_rate) override {
+		this->base::setSampleRate(sample_rate);
+		_h = 1.f / (_oversample_factor * sample_rate);
+	}
+	void set_oversample(unsigned int oversample_factor){
+		_oversample_factor = oversample_factor;
+		_h = 1.f / (oversample_factor * this->sampleRate);
+	}
+	void clear() override {
+		for (int i = 0; i < 2; i++) {
+			deriv1[i] = deriv2[i] = deriv3[i] = deriv4[i] = 0.f;
+		}
+		this->_outputs = {0.f, 0.f, 0.f, 0.f };
+		this->_state = { 0.f, 0.f };
+	}
 	
-	void setCutoff(float_t wc);
-	void updateCutoff(float_t cutoff_target, float_t oneOverBlockSize);
-	void updateCutoff();
-	void setResonance(float_t res);
-	void updateResonance(float_t res_target, float_t oneOverBlockSize);
-	void updateResonance();
-	void filter(float_t input);
+	void setResonance(float_t res) override {
+		res *= 3.f;
+		if (res < 0.5f) res = 0.5f;
+		this->base::setResonance(res);
+		_resInv = 1.f / res;
+	}
+	void setResonanceTarget(float_t res_target) override {
+		res_target *= 3.f;
+		if (res_target < 0.5f)
+			res_target = 0.5f;
+		this->base::setResonanceTarget(res_target);
+	}
+	void updateResonance() override {
+		this->base::updateResonance();
+		_resInv = 1.f / this->_q;
+	}
+	void setMode(mode_e mode) override {
+		if (mode == (mode_e::AP)){
+			mode = mode_e::NP;
+		}
+		this->_mode = mode;
+	}
+	void filter(float_t input){
+		using namespace nvs::memoryless;
+		float_t hp(0), np(0);
+		// overwritten states. [0] is bp, [1] is lp.
+		float_t tempstate[2];
+
+		for (unsigned iter = 0; iter < _oversample_factor; iter++)
+		{
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+			deriv1[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv1[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(this->_state.lp);
+
+			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
+			tempstate[0] = this->_state.bp + deriv1[0] / 2;
+			tempstate[1] = this->_state.lp + deriv1[1] / 2;
+
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+			deriv2[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp); // is this the right move?
+			deriv2[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+
+			tempstate[0] = this->_state.bp + deriv2[0] / 2;
+			tempstate[1] = this->_state.lp + deriv2[1] / 2;
+
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+			deriv3[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv3[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+
+			tempstate[0] = this->_state.bp + deriv3[0];
+			tempstate[1] = this->_state.lp + deriv3[1];
+
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+			deriv4[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv4[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+
+			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
+			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
+		}
+
+		this->_outputs.bp = this->_state.bp;
+		this->_outputs.lp = this->_state.lp;
+		this->_outputs.hp = hp;
+		this->_outputs.np = np;
+	}
+	
+	float_t operator()(float_t input) override {
+		filter(input);
+		switch (static_cast<int>(this->_mode)) {
+			case static_cast<int>(mode_e::LP):
+				return this->_outputs.lp;
+				break;
+			case static_cast<int>(mode_e::HP):
+				return this->_outputs.hp;
+				break;
+			case static_cast<int>(mode_e::BP):
+				return this->_outputs.bp;
+				break;
+			case static_cast<int>(mode_e::NP):
+				return this->_outputs.np;
+				break;
+		}
+		return 0.f;
+	}
+	float_t operator()(float_t input, float_t cutoff) override {
+		this->base::setCutoff(cutoff);
+		return operator()(input);
+	}
+	float_t operator()(float_t inp, float_t cut, float_t res) override {
+		setResonance(res);
+		return operator()(inp, cut);
+	}
 private:
-	int _oversample_factor;
-	float_t h, w_c, R, resonance;
+	unsigned int _oversample_factor {4};
+	float_t _h {1.f / (_oversample_factor*44100.f)}, _resInv {1.f};
 	// k_1 through k_4. for each, [0] is bp, [1] is lp.
 	float_t deriv1[2], deriv2[2], deriv3[2], deriv4[2];
-};
-
-//==============================================================================
-template<typename float_t>
-class slewlim
-{
-public:
-	slewlim();
-	slewlim(float_t sample_rate);
-	~slewlim()  { }
-	//============================================================
-	void setSampleRate(float_t sample_rate);
-	//============================================================
-	// immediate change
-	void setRise(float_t rise);
-	// change over block size
-	void setRise();
-	void setRise(float_t riseTarget, float_t oneOverBlockSize);
-	// immediate change
-	void setFall(float_t fall);
-	// change over block size
-	void setFall();
-	void setFall(float_t fallTarget, float_t oneOverBlockSize);
-	//============================================================
-	float_t ASR(float_t gate);
-	
-	float_t _riseTarget, _fallTarget;
-	float_t _oneOverBlockSize;
-private:
-	float_t sampleRate, fs_inv;
-	
-	// 'Inc' variables tell change per sample.
-	float_t rise, riseInc, fall, fallInc, _vOut;
 };
 
 //===============================================================================
@@ -1027,6 +1107,41 @@ public:
 		// output
 		return filterOut;
 	}
+};
+
+#if UNFINISHED_IMPLIMENTATIONS
+
+//==============================================================================
+template<typename float_t>
+class slewlim
+{
+public:
+	slewlim();
+	slewlim(float_t sample_rate);
+	~slewlim()  { }
+	//============================================================
+	void setSampleRate(float_t sample_rate);
+	//============================================================
+	// immediate change
+	void setRise(float_t rise);
+	// change over block size
+	void setRise();
+	void setRise(float_t riseTarget, float_t oneOverBlockSize);
+	// immediate change
+	void setFall(float_t fall);
+	// change over block size
+	void setFall();
+	void setFall(float_t fallTarget, float_t oneOverBlockSize);
+	//============================================================
+	float_t ASR(float_t gate);
+	
+	float_t _riseTarget, _fallTarget;
+	float_t _oneOverBlockSize;
+private:
+	float_t sampleRate, fs_inv;
+	
+	// 'Inc' variables tell change per sample.
+	float_t rise, riseInc, fall, fallInc, _vOut;
 };
 
 #endif	// end of unfinished re-implimentations

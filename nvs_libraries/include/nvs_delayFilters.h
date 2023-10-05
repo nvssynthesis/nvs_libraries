@@ -157,13 +157,10 @@ private:
 	bool isInitialized {false};
 };
 
-#if IMPLEMENTED
-class AllpassDelay : public Delay {
+
+template<uint32_t _maxDelSize, typename float_t=float>
+class AllpassDelay : public Delay<_maxDelSize, float_t> {
 public:
-	AllpassDelay() :   AllpassDelay(8192, 44100.f) {}
-	AllpassDelay(unsigned int _delSize, float sample_rate)
-	:  Delay(_delSize, sample_rate), g(0.f), z(0.f){}
-	
 	void update_g(float g_target, float oneOverBlockSize)
 	{
 		g += (g_target - g) * oneOverBlockSize;
@@ -177,14 +174,13 @@ public:
 		float u_n, y_n;
 		u_n = x_n + -g * z;
 		y_n = z + g * u_n;
-		z = tick_cubic(u_n);
+		z = this->Delay<_maxDelSize, float_t>::tick_cubic(u_n);
 		return y_n;
 	}
 	
 private:
-	float g, z;
+	float g{0.f}, z{0.f};
 };
-#endif
 
 }	// namespace delay
 }	// namespace nvs

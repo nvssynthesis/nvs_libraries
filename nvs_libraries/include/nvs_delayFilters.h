@@ -159,6 +159,7 @@ private:
 
 template<uint32_t _maxDelSize, typename float_t=float>
 class AllpassDelay : public Delay<_maxDelSize, float_t> {
+	using base = Delay<_maxDelSize, float_t>;
 public:
 	void update_g(float g_target, float oneOverBlockSize)
 	{
@@ -173,7 +174,7 @@ public:
 		float u_n, y_n;
 		u_n = x_n + -g * z;
 		y_n = z + g * u_n;
-		z = this->Delay<_maxDelSize, float_t>::tick_cubic(u_n);
+		z = this->base::tick_cubic(u_n);
 		return y_n;
 	}
 	

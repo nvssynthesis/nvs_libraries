@@ -9,9 +9,12 @@
 */
 
 #pragma once
+#define USING_SPROUT 0
 #include <math.h>
-#define PI      3.141592653589793
-#define TWOPI   6.283185307179586
+#if USING_SPROUT
+#include "sprout/math.hpp"
+#include "sprout/math/constants.hpp"
+#endif
 
 namespace nvs {
 namespace memoryless {
@@ -106,17 +109,18 @@ t mod_1(t input)
         input += 1.f;
     return input;
 }
-
-//    t unboundSat1(t x)
-//    {
-//        return logf(x + sqrt(x*x + 1.f));
-//    }
-//    t unboundSat2(t x)
-//    {
-//        t num = 2.f * x;
-//        t denom = 1.f + sqrt(1.f + fabs(4.f * x));
-//        return num / denom;
-//    }
+template<typename t>
+t unboundSat1(t x)
+{
+	return logf(x + sqrt(x*x + 1.f));
+}
+template<typename t>
+t unboundSat2(t x)
+{
+	t num = 2.f * x;
+	t denom = 1.f + sqrt(1.f + fabs(4.f * x));
+	return num / denom;
+}
 
 template<typename t>
 t crush(t input, t depth)
@@ -133,13 +137,80 @@ t xOverOnePlusAbsX(t input)
     return input / (1 + (input > 0 ? input : -input));
 }
 
+#if USING_SPROUT
+
+inline float scale(float val, float min, float range){
+	return (val - min) / range;
+}
+
+template<int min, int max, int reso>
+struct ExpTable {
+	constexpr ExpTable()	:	values()
+	{
+		double incr = range() / static_cast<double>(reso);
+		int i = 0;
+		for (double x = static_cast<double>(min); x < static_cast<double>(max); x += incr){
+			values[i] = sprout::exp(static_cast<float>(x));
+			++i;
+		}
+	}
+	static constexpr double range(){
+		return static_cast<double>(max) - static_cast<double>(min);
+	}
+	std::array<float, reso> values;
+
+	constexpr float operator()(float x){
+		x = scale(x, min, range());
+		float fidx = x * static_cast<float>(reso);
+		int iidx = static_cast<int>(fidx);
+		iidx = iidx >= 0 ? iidx : 0;
+		iidx = iidx < reso ? iidx : reso-1;
+		return values[iidx];
+	}
+};
+// cannot use inheritance (runtime polymorphism) for constexpr functionality, so no DRY here.
+template<int reso>
+struct SinTable {
+	static constexpr float min {0.f};
+	static constexpr float max {2.f * sprout::math::pi<float>()};
+	static constexpr float oneOverTwoPi {1.f / (2.f * sprout::math::pi<float>())};
+	constexpr SinTable()	:	values()
+	{
+		double incr = range() / static_cast<double>(reso);
+		int i = 0;
+		for (double x = static_cast<double>(min); x < static_cast<double>(max); x += incr){
+			values[i] = sprout::sin(static_cast<float>(x));
+			++i;
+		}
+	}
+	static constexpr double range(){
+		return static_cast<double>(max) - static_cast<double>(min);
+	}
+
+	std::array<float, reso> values;
+
+	constexpr float operator()(float x){
+		double x2 = nvs::gen::mspWrap(static_cast<double>(x * oneOverTwoPi));
+//		x = scale(x, min, range());
+		float fidx = static_cast<float>(x2) * static_cast<float>(reso);
+		int iidx = static_cast<int>(fidx);
+		iidx &= (reso - 1);
+		return values[iidx];
+	}
+
+};
+
+static ExpTable<-10, 10, 16384> exprTable;
+static SinTable<16384> sinTable;
+#endif
+
 //MAKE TABLE INSTEAD! (now have done so!)
 // Taylor approximation of sine
 // sin(x) =~ x - x^3/3! + x^5/5! - x^7/7!
 template<typename t>
 t taySin(t input)
 {
-    t x = input * TWOPI - PI;
+    t x = input * (2.f*M_PI) - M_PI;
     return x - (pow(x, 3) * 0.16666) + (pow(x, 5) * 0.008333) - (pow(x, 7) * 0.0001984);
     //+ (pow(x,9)*0.0000027557); //(use if you want more accuracy)
 }
@@ -149,7 +220,7 @@ t taySin(t input)
 template<typename t>
 t tayCos(t input)
 {
-    t x = input * TWOPI - PI;
+    t x = input * (2.f*M_PI) - M_PI;
     return 1 - pow(x, 2) * 0.5 + pow(x, 4) * 0.0416666 - pow(x, 6) * 0.0013888 + pow(x,8) * 0.0000248;
 }
 
@@ -185,7 +256,7 @@ public:
     :   m_size(32768) {
         
         for (int i = 0; i < m_size; i++) {
-            LUT[i] = cos(((t)(i*4) / (t)m_size) * TWOPI);
+            LUT[i] = cos(((t)(i*4) / (t)m_size) * 2.f*M_PI);
         }
         
     }
@@ -233,9 +304,9 @@ public:
     {
         for (int i = 0; i < m_size; i++)
         {
-            sin_table[i] = sin(((t)i / (t)m_size) * TWOPI);
-            cos_table[i] = cos(((t)i / (t)m_size) * TWOPI);
-            tan_table[i] = tan(((t)i / (t)m_size) * PI);
+            sin_table[i] = sin(((t)i / (t)m_size) * 2.f*M_PI);
+            cos_table[i] = cos(((t)i / (t)m_size) * 2.f*M_PI);
+            tan_table[i] = tan(((t)i / (t)m_size) * M_PI);
             
             tanh_table[i]= tanh(12 * ((double)(i - (m_size * 0.5)) / (double)m_size));
         }

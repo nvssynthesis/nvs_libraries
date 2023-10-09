@@ -31,11 +31,11 @@ namespace filters {
 
 template<typename float_t>
 float_t cutoff_to_g_inaccurate(float_t cutoff, float_t fs_inv){
-	return cutoff * fs_inv * 0.5f * (float_t)PI;
+	return cutoff * fs_inv * 0.5f * (float_t)M_PI;
 }
 template<typename float_t>
 float_t cutoff_to_g_slow(float_t cutoff, float_t fs_inv){
-	return tan(cutoff * fs_inv * (float_t)PI);
+	return tan(cutoff * fs_inv * (float_t)M_PI);
 }
 
 template<typename float_t>
@@ -50,7 +50,7 @@ struct CutoffToG
 		using namespace nvs::memoryless;
 		if ((trig.tan_table) != NULL)
 		{
-			//float_t wc = TWOPI * cutoff;
+			//float_t wc = (2.f*M_PI) * cutoff;
 			return static_cast<float_t>(trig.tan_LUT(cutoff * _fs_inv / 2.0));
 		}
 		else
@@ -589,195 +589,7 @@ public:
 private:
 	float_t _R{0.995f}, _xz1{0.f}, _yz1{0.f};
 };
-//=======================================================================
-/*
- time-variant allpass filter
- */
-template<typename float_t>
-class tvap  :   public filter_abstract<float_t>
-{
-public:
-	//===============================================================
-	void setSampleRate(float_t sample_rate) override {
-		this->filter_abstract<float_t>::setSampleRate(sample_rate);
-		dcFilt.setSampleRate(sample_rate);	// doesn't matter for current implementation but may in the future
-		lp.setSampleRate(sample_rate);
-		lp.setCutoff(sample_rate * 0.125f);
-	}
-	void setMode(mode_e) override {
-		// ignore request, always allpass
-		this->_mode = mode_e::AP;
-	};
-	void clear() override {
-		sp->z1 = sp->z2 = sp->fb_proc = 0.f;
-	}
-	//===============================================================
 
-	void updateCutoff() override {
-		update_f_pi();
-	}
-	void updateResonance() override {
-		update_f_b();
-	}
-	// function aliases just to have more meaningful names
-	void update_f_pi (){
-		memoryless::clamp_low(this->_cutoffTarget, (float_t)0.f);
-		f_pi += (this->_cutoffTarget - f_pi) * this->_blockSize_inv;
-		calc_b1();
-	}
-	void update_f_b(){
-		//if (f_b <= 0) f_b = 0.0000000001;
-//		constexpr float_t min_f_b = std::numeric_limits<float_t>::
-		
-		f_b += (this->_resonanceTarget - f_b) * this->_blockSize_inv;
-		f_b_to_b0();
-	}
-	
-	void calc_b1(){
-		float_t d = -1 * cos((2.f * PI * f_pi) * this->_fs_inv);
-		float_t c = (tan(PI * f_b * this->_fs_inv) - 1.f) / (tan(PI * f_b * this->_fs_inv) + 1.f);
-		float_t r1 = acos(-1.f * c);
-		float_t r2 = acos(-1.f * d);
-		b1 = cos(r1) * (1.f + cos(r2));
-	}
-	void f_b_to_b0(){
-		float_t c = (tan(PI * f_b * this->_fs_inv) - 1.f) / (tan(PI * f_b * this->_fs_inv) + 1.f);
-		float_t r1 = acos(-1.f * c);
-		b0 = cos(r1);
-	}
-	
-	float_t f_pi2r2(float_t _f_pi){
-		float_t d = -1 * cos((2.f * PI * _f_pi) * this->_fs_inv);
-		float_t r2 = acos(-d);
-		return r2;
-	}
-	float_t f_b2r1(float_t _f_b){
-		float_t tmp = tan(PI * _f_b * this->_fs_inv);
-		float_t c = (tmp - 1.f) / (tmp + 1.f);
-		float_t r1 = acos(-c);
-		return r1;
-	}
-	
-	float_t filter(float_t x_n) {
-		/* float_t _y1 = state.y1;
-		float_t _y2 = state.y2;
-		float_t _x1 = state.x1;
-		float_t _x2 = state.x2;
-		float_t y_n = b0 * x_n - b1 * _x1 + _x2 + b1 * _y1 - b0 * _y2;
-		state.y2 = _y1;
-		state.y1 = y_n;
-		state.x2 = _x1;
-		state.x1 = x_n;
-		return y_n; */
-		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
-		float_t tmp [3];
-		_r1 = f_b2r1(f_b);
-		_r2 = f_pi2r2(f_pi);
-
-		_cr1 = cos(_r1);
-		_sr1 = sin(_r1);
-		_cr2 = cos(_r2);
-		_sr2 = sin(_r2);
-		//tmp[0] = _x_n;
-		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
-		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
-
-		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
-		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
-		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
-
-		state.z1 = tmp[1];
-		state.z2 = tmp[2];
-
-		return tmp[0];
-	}
-	float_t operator()(float_t input) override {
-		return filter(input);
-	}
-	float_t operator()(float_t inp, float_t cut) override {
-		this->setCutoff(cut);
-		return operator()(inp);
-	}
-	float_t operator()(float_t inp, float_t cut, float_t reso) override {
-		this->setResonance(reso);
-		return operator()(inp, cut);
-	}
-	
-	// should be in memoryless but got linker error
-	float_t unboundSat2(float_t x){
-		float_t num = 2.0 * x;
-		float_t denom = 1.0 + sqrt(1.0 + abs(4.0 * x));
-		return num / denom;
-	}
-	
-	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b){
-		float_t _f_pi_n, _f_b_n;
-		_f_pi_n = f_pi;
-		_f_b_n = f_b;
-
-		fb_f_pi *= f_pi;
-		fb_f_pi *= 1000.0;
-		fb_f_b *= f_pi;
-		fb_f_b *= 1000.0;
-
-		_f_pi_n += unboundSat2(state.fb_proc * fb_f_pi)* 10.0;
-		_f_b_n  += unboundSat2(state.fb_proc * fb_f_b) * 10.0;
-
-		// if (_f_b_n < 0.f) _f_b_n = 0.f;
-		if (_f_b_n < 0.0)
-		_f_b_n = exp(_f_b_n);
-		else
-		_f_b_n += 1.0;
-
-		float_t highLimit = (1.f / this->_fs_inv) * 0.495f;
-		if (_f_pi_n >= highLimit) _f_pi_n = highLimit;
-		if (_f_b_n >= highLimit) _f_b_n = highLimit;
-
-		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
-		float_t tmp[3];
-		_r1 = f_b2r1(_f_b_n);
-		_r2 = f_pi2r2(_f_pi_n);
-
-		_cr1 = cos(_r1);
-		_sr1 = sin(_r1);
-		_cr2 = cos(_r2);
-		_sr2 = sin(_r2);
-		//tmp[0] = _x_n;
-		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
-		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
-
-		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
-		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
-		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
-
-		state.z1 = tmp[1];
-		state.z2 = tmp[2];
-
-
-		float_t fb_filt = dcFilt(tmp[0]);   // used to feed output to modulate control inputs
-		fb_filt = lp(fb_filt);
-		//fb_filt = 0.5f * (fb_filt + _fb_filt_z1);
-		state.fb_proc = fb_filt;
-
-		return tmp[0];
-	}
-	nvs::memoryless::trigTables<float_t> _LUT;
-	
-protected:
-	typedef struct tvapstate {
-		//float_t x1, x2, y1, y2;
-		float_t z1, z2;
-		float_t fb_proc;  // processed fed back output sample
-	} _tvapstate;
-	_tvapstate state = {.z1 = 0.f, .z2 = 0.f, .fb_proc = 0.f};
-	_tvapstate *sp = &state;
-	
-	dcBlock<float_t> dcFilt;
-	onePole<float_t> lp;
-private:
-	float_t f_pi, f_b;
-	float_t b0, b1;
-};
 
 //==================================================================================
 
@@ -818,7 +630,7 @@ public:
 	}
 	void filter(float_t input){
 		float_t c, d;
-		c = 2.f * sin((float_t)PI * this->_w_c * this->_fs_inv);
+		c = 2.f * sin((float_t)M_PI * this->_w_c * this->_fs_inv);
 		d = 2.f * (1.f - pow(this->_q, 0.25f));
 
 		if (c > 0.5f) c = 0.5f;
@@ -935,8 +747,8 @@ public:
 		{
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv1[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv1[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(this->_state.lp);
+			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(this->_state.lp);
 
 			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
@@ -944,24 +756,24 @@ public:
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv2[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp); // is this the right move?
-			deriv2[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp); // is this the right move?
+			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv3[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv3[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv4[0] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv4[1] = _h * (float_t)TWOPI * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
+			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
 
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
@@ -1005,7 +817,193 @@ private:
 	// k_1 through k_4. for each, [0] is bp, [1] is lp.
 	float_t deriv1[2], deriv2[2], deriv3[2], deriv4[2];
 };
+//=======================================================================
+/*
+ time-variant allpass filter
+ */
+template<typename float_t>
+class tvap  :   public filter_abstract<float_t>
+{
+public:
+	//===============================================================
+	void setSampleRate(float_t sample_rate) override {
+		this->filter_abstract<float_t>::setSampleRate(sample_rate);
+		dcFilt.setSampleRate(sample_rate);	// doesn't matter for current implementation but may in the future
+		lp.setSampleRate(sample_rate);
+		lp.setCutoff(sample_rate * 0.125f);
+	}
+	void setMode(mode_e) override {
+		// ignore request, always allpass
+		this->_mode = mode_e::AP;
+	};
+	void clear() override {
+		sp->z1 = sp->z2 = sp->fb_proc = 0.f;
+	}
+	//===============================================================
 
+	void updateCutoff() override {
+		update_f_pi();
+	}
+	void updateResonance() override {
+		update_f_b();
+	}
+	// function aliases just to have more meaningful names
+	void update_f_pi (){
+		memoryless::clamp_low(this->_cutoffTarget, (float_t)0.f);
+		f_pi += (this->_cutoffTarget - f_pi) * this->_blockSize_inv;
+		calc_b1();
+	}
+	void update_f_b(){
+		//if (f_b <= 0) f_b = 0.0000000001;
+//		constexpr float_t min_f_b = std::numeric_limits<float_t>::
+		
+		f_b += (this->_resonanceTarget - f_b) * this->_blockSize_inv;
+		f_b_to_b0();
+	}
+	
+	void calc_b1(){
+		float_t d = -1 * cos((2.f * M_PI * f_pi) * this->_fs_inv);
+		float_t c = (tan(M_PI * f_b * this->_fs_inv) - 1.f) / (tan(M_PI * f_b * this->_fs_inv) + 1.f);
+		float_t r1 = acos(-1.f * c);
+		float_t r2 = acos(-1.f * d);
+		b1 = cos(r1) * (1.f + cos(r2));
+	}
+	void f_b_to_b0(){
+		float_t c = (tan(M_PI * f_b * this->_fs_inv) - 1.f) / (tan(M_PI * f_b * this->_fs_inv) + 1.f);
+		float_t r1 = acos(-1.f * c);
+		b0 = cos(r1);
+	}
+	
+	float_t f_pi2r2(float_t _f_pi){
+		float_t d = -1 * cos((2.f * M_PI * _f_pi) * this->_fs_inv);
+		float_t r2 = acos(-d);
+		return r2;
+	}
+	float_t f_b2r1(float_t _f_b){
+		float_t tmp = tan(M_PI * _f_b * this->_fs_inv);
+		float_t c = (tmp - 1.f) / (tmp + 1.f);
+		float_t r1 = acos(-c);
+		return r1;
+	}
+	
+	float_t filter(float_t x_n) {
+		/* float_t _y1 = state.y1;
+		float_t _y2 = state.y2;
+		float_t _x1 = state.x1;
+		float_t _x2 = state.x2;
+		float_t y_n = b0 * x_n - b1 * _x1 + _x2 + b1 * _y1 - b0 * _y2;
+		state.y2 = _y1;
+		state.y1 = y_n;
+		state.x2 = _x1;
+		state.x1 = x_n;
+		return y_n; */
+		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+		float_t tmp [3];
+		_r1 = f_b2r1(f_b);
+		_r2 = f_pi2r2(f_pi);
+
+		_cr1 = cos(_r1);
+		_sr1 = sin(_r1);
+		_cr2 = cos(_r2);
+		_sr2 = sin(_r2);
+		//tmp[0] = _x_n;
+		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
+		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
+
+		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
+		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
+		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
+
+		state.z1 = tmp[1];
+		state.z2 = tmp[2];
+
+		return tmp[0];
+	}
+	
+	// should be in memoryless but got linker error
+	float_t unboundSat2(float_t x){
+		float_t num = 2.0 * x;
+		float_t denom = 1.0 + sqrt(1.0 + abs(4.0 * x));
+		return num / denom;
+	}
+	
+	float_t filter_fbmod(float_t x_n, float_t fb_f_pi, float_t fb_f_b){
+		float_t _f_pi_n, _f_b_n;
+		_f_pi_n = f_pi;
+		_f_b_n = f_b;
+
+		fb_f_pi *= f_pi;
+		fb_f_pi *= 1000.0;
+		fb_f_b *= f_pi;
+		fb_f_b *= 1000.0;
+
+		_f_pi_n += unboundSat2(state.fb_proc * fb_f_pi)* 10.0;
+		_f_b_n  += unboundSat2(state.fb_proc * fb_f_b) * 10.0;
+
+		// if (_f_b_n < 0.f) _f_b_n = 0.f;
+		if (_f_b_n < 0.0)
+		_f_b_n = exp(_f_b_n);
+		else
+		_f_b_n += 1.0;
+
+		float_t highLimit = (1.f / this->_fs_inv) * 0.495f;
+		if (_f_pi_n >= highLimit) _f_pi_n = highLimit;
+		if (_f_b_n >= highLimit) _f_b_n = highLimit;
+
+		float_t _r1, _r2, _cr1, _cr2, _sr1, _sr2;
+		float_t tmp[3];
+		_r1 = f_b2r1(_f_b_n);
+		_r2 = f_pi2r2(_f_pi_n);
+
+		_cr1 = cos(_r1);
+		_sr1 = sin(_r1);
+		_cr2 = cos(_r2);
+		_sr2 = sin(_r2);
+		//tmp[0] = _x_n;
+		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
+		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
+
+		tmp[0] = _cr1 * x_n - _sr1 * tmp[1];
+		tmp[1] = _sr1 * x_n + _cr1 * tmp[1];
+		tmp[2] = _sr2 * state.z1 + _cr2 * state.z2;
+
+		state.z1 = tmp[1];
+		state.z2 = tmp[2];
+
+
+		float_t fb_filt = dcFilt(tmp[0]);   // used to feed output to modulate control inputs
+		fb_filt = lp(fb_filt);
+		state.fb_proc = fb_filt;
+
+		return tmp[0];
+	}
+	float_t operator()(float_t input) override {
+		return filter(input);
+	}
+	float_t operator()(float_t inp, float_t cut) override {
+		this->setCutoff(cut);
+		return operator()(inp);
+	}
+	float_t operator()(float_t inp, float_t cut, float_t reso) override {
+		this->setResonance(reso);
+		return operator()(inp, cut);
+	}
+protected:
+	typedef struct tvapstate {
+		//float_t x1, x2, y1, y2;
+		float_t z1, z2;
+		float_t fb_proc;  // processed fed back output sample
+	} _tvapstate;
+	_tvapstate state = {.z1 = 0.f, .z2 = 0.f, .fb_proc = 0.f};
+	_tvapstate *sp = &state;
+	
+	dcBlock<float_t> dcFilt;
+	onePole<float_t> lp;
+	
+private:
+	float_t f_pi, f_b;
+	float_t b0, b1;
+};
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
 template<typename float_t>
@@ -1027,7 +1025,7 @@ public:
 	}
 	void setFc(float_t fc){
 		// prewarp the cutoff- these are bilinear-transform filters
-		float_t wd = 2 * PI * fc;
+		float_t wd = 2 * M_PI * fc;
 		float_t fs_inv  = 1 / sampleRate;
 		float_t wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
 		float_t g  = wa * fs_inv / 2;
@@ -1082,7 +1080,7 @@ public:
 		fc = cutoff;
 	}
 	float_t doTPTMoogLPF(float_t xn){	// calculate g
-		float_t const wd = 2 * PI * fc;
+		float_t const wd = 2 * M_PI * fc;
 		float_t const fs_inv  = 1 / (float_t)filter1.getSampleRate();
 		float_t const wa = (2 / fs_inv) * tan(wd * fs_inv / 2);
 		float_t const g  = wa * fs_inv / 2;

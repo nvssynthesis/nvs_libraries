@@ -27,7 +27,6 @@ public:
 	Delay()	:	delMask(_maxDelSize - 1)
 	{
 		clear();
-		isInitialized = true;
 	}
 	void clear() {
 		_buffer.fill(0.f);
@@ -143,18 +142,12 @@ public:
 	inline fractionalIdx_t getEffectiveDelayTimeSamps() const {
 		return delTimeSamps + 1.0;
 	}
-	[[deprecated("unnecessary, the object is initialized upon construction")]]
-	bool ready() const {
-		return isInitialized;
-	}
 private:
 	fractionalIdx_t delTimeSamps {1.0}, sampleRate{44100.0};
 	std::array<float_t, _maxDelSize> _buffer;
 	integralIdx_t delMask;
 	integralIdx_t wHead {0}, rHead;
 	interp_e interpType;
-	[[deprecated("unnecessary, the object is initialized upon construction")]]
-	bool isInitialized {false};
 };
 
 template<uint32_t _maxDelSize, typename float_t=float>

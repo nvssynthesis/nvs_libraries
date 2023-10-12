@@ -11,7 +11,7 @@
 #pragma once
 #include <array>
 #include <cmath>
-#include "nvs_libraries/include/nvs_memoryless.h"
+#include "nvs_memoryless.h"
 
 namespace nvs {
 namespace gen {
@@ -213,17 +213,17 @@ inline T wrap(T x, T upperLimit) {
 	return x;
 }
 
-template<typename T>
-T mspWrap(T f){
-	f = (f > std::numeric_limits<int>::max() || f < std::numeric_limits<int>::min()) ? 0. : f;
-	int k = static_cast<int>(f);
-	T val;
-	if (k <= f)
-		val = f-k;
-	else
-		val = f - (k-1);
-	return val;
-}
+//template<typename T>
+//T mspWrap(T f){
+//	f = (f > std::numeric_limits<int>::max() || f < std::numeric_limits<int>::min()) ? 0. : f;
+//	int k = static_cast<int>(f);
+//	T val;
+//	if (k <= f)
+//		val = f-k;
+//	else
+//		val = f - (k-1);
+//	return val;
+//}
 /*
  potentially assymetrical phasor-to-triangle shaper.
  Unipolar output, [0..1], expecting input also [0..1]; however
@@ -255,7 +255,7 @@ float_t triangle(float_t x, float_t skew = 0.5){
 			if (x < 0.f)	// built in fmod does not properly take care of negatives
 				x *= -1.f;
 #else
-			x = mspWrap<float>(x);
+			x = nvs::memoryless::mspWrap<float>(x);
 #endif
 		} // end wrap
 		else {	// clamp

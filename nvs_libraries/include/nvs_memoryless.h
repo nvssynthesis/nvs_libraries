@@ -9,8 +9,12 @@
 */
 
 #pragma once
-#define USING_SPROUT 0
 #include <math.h>
+
+#ifndef USING_SPROUT
+#define USING_SPROUT 1
+#endif
+
 #if USING_SPROUT
 #include "sprout/math.hpp"
 #include "sprout/math/constants.hpp"
@@ -137,6 +141,18 @@ t xOverOnePlusAbsX(t input)
     return input / (1 + (input > 0 ? input : -input));
 }
 
+template<typename T>
+T mspWrap(T f){
+	f = (f > std::numeric_limits<int>::max() || f < std::numeric_limits<int>::min()) ? 0. : f;
+	int k = static_cast<int>(f);
+	T val;
+	if (k <= f)
+		val = f-k;
+	else
+		val = f - (k-1);
+	return val;
+}
+
 #if USING_SPROUT
 
 inline float scale(float val, float min, float range){
@@ -190,7 +206,7 @@ struct SinTable {
 	std::array<float, reso> values;
 
 	constexpr float operator()(float x){
-		double x2 = nvs::gen::mspWrap(static_cast<double>(x * oneOverTwoPi));
+		double x2 = mspWrap(static_cast<double>(x * oneOverTwoPi));
 //		x = scale(x, min, range());
 		float fidx = static_cast<float>(x2) * static_cast<float>(reso);
 		int iidx = static_cast<int>(fidx);
@@ -200,11 +216,10 @@ struct SinTable {
 
 };
 
-static ExpTable<-10, 10, 16384> exprTable;
-static SinTable<16384> sinTable;
+//static ExpTable<-10, 10, 16384> exprTable;
+//static SinTable<16384> sinTable;
 #endif
 
-//MAKE TABLE INSTEAD! (now have done so!)
 // Taylor approximation of sine
 // sin(x) =~ x - x^3/3! + x^5/5! - x^7/7!
 template<typename t>

@@ -61,6 +61,8 @@ private:
 	float_t _fs_inv;
 };
 
+static memoryless::SinTable<16384> sinTable;
+
 //==================================================================================
 
 enum class mode_e {
@@ -630,7 +632,7 @@ public:
 	}
 	void filter(float_t input){
 		float_t c, d;
-		c = 2.f * sin((float_t)M_PI * this->_w_c * this->_fs_inv);
+		c = 2.f * sinTable((float_t)M_PI * this->_w_c * this->_fs_inv);
 		d = 2.f * (1.f - pow(this->_q, 0.25f));
 
 		if (c > 0.5f) c = 0.5f;
@@ -903,9 +905,9 @@ public:
 		_r2 = f_pi2r2(f_pi);
 
 		_cr1 = cos(_r1);
-		_sr1 = sin(_r1);
+		_sr1 = sinTable(_r1);
 		_cr2 = cos(_r2);
-		_sr2 = sin(_r2);
+		_sr2 = sinTable(_r2);
 		//tmp[0] = _x_n;
 		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
 		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
@@ -956,9 +958,9 @@ public:
 		_r2 = f_pi2r2(_f_pi_n);
 
 		_cr1 = cos(_r1);
-		_sr1 = sin(_r1);
+		_sr1 = sinTable(_r1);
 		_cr2 = cos(_r2);
-		_sr2 = sin(_r2);
+		_sr2 = sinTable(_r2);
 		//tmp[0] = _x_n;
 		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
 		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;

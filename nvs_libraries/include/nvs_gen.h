@@ -16,35 +16,38 @@
 namespace nvs {
 namespace gen {
 
+template<std::floating_point float_t>
 struct phasor {
 private:
-	float phase { 0.f };
-	float phaseDelta {0.f};	// frequency / samplerate
-	float const &_sampleRate;
+	float_t phase { 0.f };
+	float_t phaseDelta {0.f};	// frequency / samplerate
+	float_t const &_sampleRate;
 public:
-	explicit phasor(float const &sampleRate)	:	_sampleRate(sampleRate){}
+	explicit phasor(float_t const &sampleRate)	:	_sampleRate(sampleRate){}
 
-	inline void setPhase(float ph){
+	inline void setPhase(float_t ph){
 		phase = ph;
 	}
-	inline float getPhase() const {
+	inline float_t getPhase() const {
 		return phase;
 	}
 	inline void reset(){
 		phase = 0.f;
 	}
-	inline void setPhaseDelta(float pd){
+	inline void setPhaseDelta(float_t pd){
 		phaseDelta = pd;
 	}
 	// may be called every sample, so no check for aliasing or divide by 0
-	inline void setFrequency(float frequency){
+	inline void setFrequency(float_t frequency){
+		assert(_sampleRate > static_cast<float_t>(0.f));
 		phaseDelta = frequency / _sampleRate;
 	}
-	inline float getFrequency() const {
+	inline float_t getFrequency() const {
 		return phaseDelta * _sampleRate;
 	}
 	// prefix increment
 	phasor& operator++(){
+		assert(phaseDelta == phaseDelta);
 		phase += phaseDelta;
 		while (phase >= 1.f)
 			phase -= 1.f;
@@ -54,6 +57,7 @@ public:
 	}
 	// postfix increment
 	phasor operator++(int){
+		assert(phaseDelta == phaseDelta);
 		phasor old = *this;
 		phase += phaseDelta;
 		while (phase >= 1.f)
@@ -147,7 +151,7 @@ inline T switcher(bool select, T x1, T x2){
 		return x2;
 }
 
-/* integral argument for number of outputs
+/* integral template argument for number of outputs
  lets you choose which output the incoming signal is sent to
  a value of 0 will choose no output
  a value greater than numOuts will go to the last out
@@ -177,6 +181,7 @@ private:
 public:
 	latch(T initial = static_cast<T>(0))
 	:	histo(initial){}
+	
 	T operator()(T x, bool letPass){
 		if (letPass){
 			histo = x;
@@ -186,7 +191,6 @@ public:
 		}
 	}
 };
-
 
 template <typename T>
 std::array<T, 2> pol2car(T r, T theta){
@@ -205,12 +209,29 @@ std::array<T, 2> car2pol(T x, T y){
 }
 
 template<typename T>
+inline T wrap01(T x) {
+	T y = x - static_cast<long long int>(x);
+	if (x < 0){
+		y = static_cast<T>(1) + y;
+	}
+	return y;
+}
+template<std::floating_point T>
 inline T wrap(T x, T upperLimit) {
-	while (x < static_cast<T>(0))
-		x += upperLimit;
-	while (x >= upperLimit)
-		x -= upperLimit;
-	return x;
+	assert(upperLimit > 0);
+	x /= upperLimit;
+	T y = wrap01(x);
+	y *= upperLimit;
+	return y;
+}
+template<std::integral T>
+inline T wrap(T x, T upperLimit){
+	assert(upperLimit > 0);
+	T y = x % upperLimit;
+	if (x < 0){
+		y += upperLimit;
+	}
+	return y;
 }
 
 //template<typename T>
@@ -255,7 +276,7 @@ float_t triangle(float_t x, float_t skew = 0.5){
 			if (x < 0.f)	// built in fmod does not properly take care of negatives
 				x *= -1.f;
 #else
-			x = nvs::memoryless::mspWrap<float>(x);
+			x = nvs::memoryless::mspWrap<float_t>(x);
 #endif
 		} // end wrap
 		else {	// clamp

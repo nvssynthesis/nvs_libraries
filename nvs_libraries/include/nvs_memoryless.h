@@ -63,12 +63,7 @@ t biuni(t x)
 template<typename t>
 t clamp(t x, t min, t max)
 {
-    if (x > max)
-        return max;
-    else if (x < min)
-        return min;
-    else
-        return x;
+	return (x < min) ? min : ((x > max) ? max : x);
 }
 template<typename t>
 t clamp1(t x)

@@ -294,16 +294,14 @@ template <typename float_t>
 float_t parzen(float_t x){
 	x = nvs::memoryless::clamp<float_t>(x, 0.f, 1.f);
 	
-	float_t selector = (x > 0.5f);
-
 	float_t x3 = x * x * x;
-	float_t mul5 = 2.f * x3;
-	
-	float_t rsub = 1.f - x;
-	float_t mul_7 = 6.f * rsub * rsub * x;
-	float_t rsub_10 = 1.f - mul_7;
+	float_t oneMinusX = 1.f - x;
 
-	return switcher<float>(static_cast<bool>(selector), rsub_10, mul5);
+	float_t retval = 2.f * x3;
+	if (x > 0.5f){
+		retval = 1.f - (6.f * oneMinusX * oneMinusX * x);
+	}
+	return retval;
 }
 
 enum class boundsModes_e {
@@ -368,7 +366,7 @@ inline T peek(T const *data, double fracIndex, unsigned long length){
 		T const x2 = readBuff<T, b>(data, iidx + 2, length);
 		return hermite(static_cast<T>(frac), xm1, x0, x1, x2);
 	}
-	assert(false);
+//	assert(false);
 }
 
 #if 0

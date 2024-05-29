@@ -195,8 +195,8 @@ public:
 template <typename T>
 std::array<T, 2> pol2car(T r, T theta){
 	std::array<T, 2> cart;
-	cart[0] = r * cos(theta);
-	cart[1] = r * sin(theta);
+	cart[0] = r * nvs::memoryless::padeCos(theta);
+	cart[1] = r * nvs::memoryless::padeSin(theta);
 	return cart;
 }
 

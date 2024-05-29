@@ -215,6 +215,26 @@ struct SinTable {
 //static SinTable<16384> sinTable;
 #endif
 
+template<typename t>
+t padeSin(t x)
+{
+    t xx = x*x;
+    t x3 = xx * x;
+    t x5 = x3 * xx;
+    t num = (551.f * x5)/166320.f - (53.f * x3)/396.f + x;
+    t den = (5.f * xx * xx)/11088.f + (13.f * xx)/396.f + 1.f;
+    return num / den;
+}
+template <typename t>
+t padeCos(t x)
+{
+    t xx = x * x;
+    t x4 = xx * xx;
+    t num = (313.f * x4)/15120.f - (115.f * xx)/252.f + 1.f;
+    t den = (13.f * x4)/15120.f + (11.f * xx)/252.f + 1.f;
+    return num / den;
+}
+
 // Taylor approximation of sine
 // sin(x) =~ x - x^3/3! + x^5/5! - x^7/7!
 template<typename t>

@@ -45,7 +45,7 @@ namespace nvssynthesis_lfo {
     private:
       T sampleRate, fs_inv;
       T _phase, _lastPhase;
-      static const nvs::memoryless::trigTables<T> shapes;
+      const nvs::memoryless::trigTables<T> shapes;
   };
 } // namespace nvssynthesis_lfo
 
@@ -74,7 +74,7 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     T simple_lfo<T>::phasor() {
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         _lastPhase = _phase;
         _phase += _freq * fs_inv;
         _phase = mod_1<T>(_phase);
@@ -94,13 +94,13 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     T simple_lfo<T>::sine(){
-        using namespace nvs_memoryless;
-        T sinewave = this->shapes.up_cos_LUT(_phase);
+        using namespace nvs::memoryless;
+        T sinewave = shapes.up_cos_LUT(_phase);
         return sinewave;
     }
     template<typename T>
     T inline simple_lfo<T>::phasor_offset(T offset) {
-        return nvs_memoryless::mod_1<T>(_phase + offset);
+        return nvs::memoryless::mod_1<T>(_phase + offset);
     }
     template<typename T>
     T simple_lfo<T>::saw_offset(T offset) {
@@ -117,7 +117,7 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     T simple_lfo<T>::sine_offset(T offset){
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         T sinewave = this->shapes.up_cos_LUT(phasor_offset(offset));
         return sinewave;
     }
@@ -128,7 +128,7 @@ namespace nvssynthesis_lfo {
     // 3 = sine
     template<typename T>
     T simple_lfo<T>::multi(T waveform){
-        using namespace nvs_memoryless;
+        using namespace nvs::memoryless;
         waveform = clamp<T>(waveform, 0, 3);
         int selector = (int)(floor(waveform));
         T interpolationAmt = mod_1<T>(waveform);

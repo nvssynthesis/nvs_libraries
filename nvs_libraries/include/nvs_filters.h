@@ -707,7 +707,8 @@ public:
 	}
 	void set_oversample(unsigned int oversample_factor){
 		_oversample_factor = oversample_factor;
-		_h = 1.f / (oversample_factor * this->sampleRate);
+//		_h = 1.f / (oversample_factor * this->sampleRate);
+		_h = this->_fs_inv / oversample_factor;
 	}
 	void clear() override {
 		for (int i = 0; i < 2; i++) {
@@ -1109,41 +1110,84 @@ public:
 	}
 };
 
-#if UNFINISHED_IMPLIMENTATIONS
-
 //==============================================================================
 template<typename float_t>
 class slewlim
 {
 public:
-	slewlim();
-	slewlim(float_t sample_rate);
 	~slewlim()  { }
 	//============================================================
-	void setSampleRate(float_t sample_rate);
+	void setSampleRate(float_t sample_rate){
+		assert (sample_rate > 0.f);
+		fs_inv = 1.f / sample_rate;
+	}
+	void setBlockSize(size_t blockSize){
+		_oneOverBlockSize = 1.f / static_cast<float_t>(blockSize);
+	}
 	//============================================================
 	// immediate change
-	void setRise(float_t rise);
-	// change over block size
-	void setRise();
-	void setRise(float_t riseTarget, float_t oneOverBlockSize);
+	void setRise(float_t rise){
+		this->rise = rise;
+		this->riseInc = (this->fs_inv * 1000.f) / (this->rise);
+		setRiseTarget(rise);
+	}
+	void setRiseTarget(float_t rise_target){
+		this->_riseTarget = rise_target;
+	}
+	void updateRise(){ // change over block size
+		if (_riseTarget != rise)
+		{
+			this->rise += (_riseTarget - rise) * _oneOverBlockSize;
+			this->riseInc = (this->fs_inv * 1000.f) / (rise);
+		}
+	}
 	// immediate change
-	void setFall(float_t fall);
+	void setFall(float_t fall){
+		this->fall = fall;
+		this->fallInc = (this->fs_inv * 1000.f) / (this->fall);
+		setFallTarget(fall);
+	}
+	void setFallTarget(float_t fall_target){
+		this->_fallTarget = fall_target;
+	}
 	// change over block size
-	void setFall();
-	void setFall(float_t fallTarget, float_t oneOverBlockSize);
+	void updateFall(){
+	if (_fallTarget != fall)
+		{
+			this->fall += (_fallTarget - fall) * _oneOverBlockSize;
+			this->fallInc = (this->fs_inv * 1000.f) / (fall);
+		}
+	}
 	//============================================================
-	float_t ASR(float_t gate);
+	float_t ASR(float_t gate){
+		using namespace nvs::memoryless;
+		
+		// it was updating the params implicitly before...
+//		setRise();
+//		setFall();
+		
+		if (_vOut < gate)
+		{
+			_vOut += riseInc;
+			_vOut = clamp_high<float_t>(_vOut, gate);
+		}
+		else if (_vOut > gate)
+		{
+			_vOut -= fallInc;
+			_vOut = clamp_low<float_t>(_vOut, gate);
+		}
+		
+		return _vOut;
+	}
 	
-	float_t _riseTarget, _fallTarget;
-	float_t _oneOverBlockSize;
 private:
 	float_t sampleRate, fs_inv;
 	
+	float_t _riseTarget, _fallTarget;
+	float_t _oneOverBlockSize;
 	// 'Inc' variables tell change per sample.
-	float_t rise, riseInc, fall, fallInc, _vOut;
+	float_t rise, riseInc, fall, fallInc, _vOut{0.f};
 };
 
-#endif	// end of unfinished re-implimentations
 }   // namespace filters
 }	// namespace nvs

@@ -13,7 +13,7 @@
 /**
  TODO:
 	-optimize:
-		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
+		-replace all instances of sin() and cos() with faster versions (pade or lookup table if it remains stable)
  */
 
 

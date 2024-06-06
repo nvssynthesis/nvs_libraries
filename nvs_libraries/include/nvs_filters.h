@@ -44,6 +44,7 @@ struct CutoffToG
 	static_assert(std::is_floating_point<float_t>::value, "CutoffToG type must be floating point");
 
 	void setSampleRate(float_t sr){
+		assert(sr > 0.f);
 		_fs_inv = static_cast<float_t>(1) / sr;
 	}
 	float_t operator()(float_t cutoff){

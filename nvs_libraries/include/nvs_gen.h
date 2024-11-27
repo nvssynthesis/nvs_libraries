@@ -11,6 +11,7 @@
 #pragma once
 #include <array>
 #include <cmath>
+#include <concepts>
 #include "nvs_memoryless.h"
 
 namespace nvs {

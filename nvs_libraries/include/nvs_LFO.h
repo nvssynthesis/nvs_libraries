@@ -51,7 +51,7 @@ namespace nvssynthesis_lfo {
 
 #ifdef H_ONLY
 namespace nvssynthesis_lfo {
-  
+
     template<typename T>
     simple_lfo<T>::simple_lfo() {
         simple_lfo(44100);

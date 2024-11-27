@@ -8,7 +8,7 @@
   ==============================================================================
 */
 
-#include "include/nvs_LFO.h"
+#include "nvs_LFO.h"
 
 namespace nvssynthesis_lfo {
   

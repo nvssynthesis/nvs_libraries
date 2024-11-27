@@ -2,36 +2,45 @@ cmake_minimum_required (VERSION 3.15)
 
 project(nvs_libraries)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(nvs_filters
-	src/nvs_filters.cpp
+add_compile_definitions(
+		_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
+		#H_ONLY
 )
 
-add_library(nvs_LFO
-	src/nvs_LFO.cpp
+include_directories(
+		include
+		external/sprout
 )
 
-target_include_directories(nvs_filters PUBLIC include)
-target_include_directories(nvs_LFO PUBLIC include)
+set(SOURCES
+		src/nvs_filters.cpp
+		src/nvs_LFO.cpp
+)
 
-add_library(nvs_gen INTERFACE)
-add_library(nvs_logpow INTERFACE)
-add_library(nvs_matrix2x2 INTERFACE)
-add_library(nvs_memoryless INTERFACE)
+set(HEADERS
+		include/nvs_delayFilters.h
+		include/nvs_denormal.h
+		include/nvs_filters.h
+		include/nvs_gen.h
+		include/nvs_LFO.h
+		include/nvs_logpow.h
+		include/nvs_matrix2x2.h
+		include/nvs_memoryless.h
+)
 
-target_include_directories(nvs_gen INTERFACE include)
-target_include_directories(nvs_logpow INTERFACE include)
-target_include_directories(nvs_matrix2x2 INTERFACE include)
-target_include_directories(nvs_memoryless INTERFACE include)
+add_library(nvs_libraries STATIC ${SOURCES} ${HEADERS})
+
+target_include_directories(nvs_libraries PUBLIC
+		${CMAKE_CURRENT_SOURCE_DIR}/include
+		${CMAKE_CURRENT_SOURCE_DIR}/external/sprout
+)
 
 enable_testing()
 
-add_executable(nvs_gen_test
-		tests/nvs_gen_test.cpp
-)
+add_executable(nvs_gen_test tests/nvs_gen_test.cpp)
 
-target_link_libraries(nvs_gen_test PRIVATE nvs_gen)
-
-add_test(NAME nvs_gen_test COMMAND nvs_gen_test)
+target_link_libraries(nvs_gen_test PRIVATE nvs_libraries)

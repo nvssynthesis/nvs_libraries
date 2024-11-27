@@ -49,7 +49,6 @@ namespace nvssynthesis_lfo {
   };
 } // namespace nvssynthesis_lfo
 
-#ifdef H_ONLY
 namespace nvssynthesis_lfo {
 
     template<typename T>
@@ -171,5 +170,3 @@ namespace nvssynthesis_lfo {
         return (_lastPhase > _phase);
     }
 }
-
-#endif

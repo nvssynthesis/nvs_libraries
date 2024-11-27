@@ -9,7 +9,7 @@
 /**
  ***TODO:
 	-optimize tvap:
-		-replace all instances of sin() and cos() with faster versions (lookup table if it remains stable)
+		-replace all instances of sin() and cos() with faster versions (pade or lookup table if it remains stable)
 	-free cutoff_to_g(), both because it CAN be free and because not all filters need it
 	-remove #include <iostream>
 **	-remove filter_abstract::z1

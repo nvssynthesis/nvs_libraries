@@ -23,23 +23,3 @@ target_include_directories(nvs_libraries INTERFACE
 enable_testing()
 add_executable(nvs_gen_test tests/nvs_gen_test.cpp)
 target_link_libraries(nvs_gen_test PRIVATE nvs_libraries)
-#
-#set(HEADERS
-#		include/nvs_delayFilters.h
-#		include/nvs_denormal.h
-#		include/nvs_filters.h
-#		include/nvs_gen.h
-#		include/nvs_LFO.h
-#		include/nvs_logpow.h
-#		include/nvs_matrix2x2.h
-#		include/nvs_memoryless.h
-#)
-#
-#
-#target_include_directories(nvs_libraries PUBLIC
-#		${CMAKE_CURRENT_SOURCE_DIR}/include
-#		${CMAKE_CURRENT_SOURCE_DIR}/external/sprout
-#)
-
-
-

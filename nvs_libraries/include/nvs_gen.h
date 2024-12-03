@@ -348,6 +348,7 @@ inline float_t hermite(float_t frac_pos, float_t xm1, float_t x0, float_t x1, fl
 
 template <typename T, interpolationModes_e interp=interpolationModes_e::linear, boundsModes_e b=boundsModes_e::clamp>
 inline T peek(T const *data, double fracIndex, unsigned long length){
+	assert (data != nullptr);
 	
 	long iidx = static_cast<long>(fracIndex);
 	T const x0 = readBuff<T, b>(data, iidx, length);

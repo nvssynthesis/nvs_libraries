@@ -22,10 +22,12 @@ struct phasor {
 private:
 	float_t phase { 0.f };
 	float_t phaseDelta {0.f};	// frequency / samplerate
-	float_t const &_sampleRate;
+	float_t _sampleRate {0.f};
 public:
-	explicit phasor(float_t const &sampleRate)	:	_sampleRate(sampleRate){}
-
+	inline void setSampleRate(float_t sr){
+		assert (sr > 0.f);
+		_sampleRate = sr;
+	}
 	inline void setPhase(float_t ph){
 		phase = ph;
 	}

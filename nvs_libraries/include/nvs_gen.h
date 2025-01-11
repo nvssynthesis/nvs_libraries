@@ -314,9 +314,6 @@ enum class boundsModes_e {
 
 template <typename T, boundsModes_e b=boundsModes_e::clamp>
 T readBuff(T const *data, long index, unsigned long length){
-//	if (length < 1){
-//		return 0.f;
-//	}
 	assert(length > 0);
 	if constexpr (b == boundsModes_e::clamp){
 		index = nvs::memoryless::clamp<long>(index, 0, length - 1);

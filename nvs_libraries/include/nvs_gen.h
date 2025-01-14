@@ -73,7 +73,7 @@ public:
 
 template <typename T>
 struct history {
-	T val;
+	T val {0.0};
 	T operator()(T x){
 		T retVal = val;
 		val = x;

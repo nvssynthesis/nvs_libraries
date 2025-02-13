@@ -83,7 +83,7 @@ struct history {
 
 template <typename T>
 struct accum {
-	T val;
+	T val {T(0.0)};
 	T operator()(T x){
 		val += x;
 		return val;

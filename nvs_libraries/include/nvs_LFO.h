@@ -20,6 +20,7 @@ namespace nvssynthesis_lfo {
       simple_lfo();
       simple_lfo(T sample_rate);
       void setSampleRate(T sample_rate);
+	  T getSampleRate() const;
 
       T phasor(); // use to update state (phase)
       T saw();
@@ -43,7 +44,7 @@ namespace nvssynthesis_lfo {
       
       T _freq;
     private:
-      T sampleRate, fs_inv;
+      T fs_inv;
       T _phase, _lastPhase;
       const nvs::memoryless::trigTables<T> shapes;
   };
@@ -54,10 +55,6 @@ namespace nvssynthesis_lfo {
     template<typename T>
     simple_lfo<T>::simple_lfo() {
         simple_lfo(44100);
-        /*setSampleRate(44100);
-        _phase = 0.0;
-        // better: epsilon for <T>. better still: based on frequency, but that doesn't exist on init
-        _lastPhase = 0.999999;*/
     }
     template<typename T>
     simple_lfo<T>::simple_lfo(T sample_rate) {
@@ -68,9 +65,14 @@ namespace nvssynthesis_lfo {
     }
     template<typename T>
     void simple_lfo<T>::setSampleRate(T sample_rate) {
-        this->sampleRate = sample_rate;
         this->fs_inv = 1.0 / sample_rate;
     }
+
+	template<typename T>
+	T simple_lfo<T>::getSampleRate() const {
+		return 1.0 / fs_inv;
+	}
+
     template<typename T>
     T simple_lfo<T>::phasor() {
         using namespace nvs::memoryless;

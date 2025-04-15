@@ -82,7 +82,10 @@ public:
 	//============================================================
 	virtual void clear() = 0;
 	virtual void setSampleRate(float_t sample_rate){
-		_fs_inv = static_cast<float_t>(1.0) / sample_rate;
+		_fs_inv = 1.0 / sample_rate;
+	}
+	float_t getSampleRate() const {
+		return 1.0 / _fs_inv;
 	}
 	virtual void setBlockSize(size_t blockSize){
 		_blockSize_inv = static_cast<float_t>(1) / static_cast<float_t>(blockSize);
@@ -1121,6 +1124,9 @@ public:
 	void setSampleRate(float_t sample_rate){
 		assert (sample_rate > 0.f);
 		fs_inv = 1.f / sample_rate;
+	}
+	float_t getSampleRate() const {
+		return 1.0 / fs_inv;
 	}
 	void setBlockSize(size_t blockSize){
 		_oneOverBlockSize = 1.f / static_cast<float_t>(blockSize);

@@ -91,13 +91,16 @@ struct accum {
 	T operator()(T x, bool shouldReset){
 		val += x;
 		T retVal = val;
-		reset(shouldReset);
+		if (shouldReset){
+			reset();
+		}
 		return retVal;
 	}
-	void reset(bool b = true){
-		if (b){
-			val = static_cast<T>(0);
-		}
+	void reset(){
+		val = static_cast<T>(0);
+	}
+	void set(float newVal){
+		val = newVal;
 	}
 };
 

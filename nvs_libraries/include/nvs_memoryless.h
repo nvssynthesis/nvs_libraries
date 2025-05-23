@@ -99,6 +99,7 @@ t wrap(t x, t xMin, t xMax)
     return (t)fmodf((fmodf(x - xMin, xMax - xMin) + xMax - xMin) , xMax - xMin) + xMin;
 }
 
+[[deprecated]]
 template<typename t>
 t mod_1(t input)
 {

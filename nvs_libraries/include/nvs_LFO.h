@@ -11,6 +11,7 @@
 #pragma once
 #include <type_traits>
 #include "nvs_memoryless.h"
+#include "nvs_gen.h"
 
 namespace nvs {
 namespace lfo {
@@ -42,7 +43,7 @@ public:
 	void reset();
 	[[nodiscard]] bool crossedOver() const;
 	
-	T _freq;
+	T _freq {0.0};
 private:
 	T sampleRate, fs_inv;
 	T _phase, _lastPhase;
@@ -80,7 +81,7 @@ T simple_lfo<T>::phasor() {
 	using namespace nvs::memoryless;
 	_lastPhase = _phase;
 	_phase += _freq * fs_inv;
-	_phase = mod_1<T>(_phase);
+	_phase = nvs::gen::wrap01(_phase);
 	return _phase;
 }
 template<typename T>
@@ -103,7 +104,7 @@ T simple_lfo<T>::sine() const {
 }
 template<typename T>
 T inline simple_lfo<T>::phasor_offset(T offset) const {
-	return nvs::memoryless::mod_1<T>(_phase + offset);
+	return nvs::gen::wrap01(_phase + offset);
 }
 template<typename T>
 T simple_lfo<T>::saw_offset(T offset) const {
@@ -134,7 +135,7 @@ T simple_lfo<T>::multi(T waveform) const {
 	using namespace nvs::memoryless;
 	waveform = clamp<T>(waveform, 0, 3);
 	int selector = (int)(floor(waveform));
-	T interpolationAmt = mod_1<T>(waveform);
+	T interpolationAmt = nvs::gen::wrap01(waveform);
 	
 	switch (selector)
 	{

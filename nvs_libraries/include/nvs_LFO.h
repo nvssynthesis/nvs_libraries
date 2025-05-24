@@ -22,6 +22,9 @@ public:
 	simple_lfo();
 	simple_lfo(T sample_rate);
 	void setSampleRate(T sample_rate);
+	T getSampleRate() const {
+		return sampleRate;
+	}
 	
 	T phasor(); // use to update state (phase)
 	[[nodiscard]] T saw() const;

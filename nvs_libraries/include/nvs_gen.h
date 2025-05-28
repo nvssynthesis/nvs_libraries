@@ -196,6 +196,9 @@ public:
 			return histo;
 		}
 	}
+	void set(T x) {	// could use operator(x, false) and ignore return val, but this is more sense-making
+		histo = x;
+	}
 };
 
 template <typename T>

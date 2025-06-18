@@ -49,7 +49,7 @@ struct CutoffToG
 	}
 	float_t operator()(float_t cutoff){
 		using namespace nvs::memoryless;
-		if ((trig.tan_table) != NULL)
+		if ((trig.tan_table) != nullptr)
 		{
 			//float_t wc = (2.f*M_PI) * cutoff;
 			return static_cast<float_t>(trig.tan_LUT(cutoff * _fs_inv / 2.0));
@@ -58,11 +58,12 @@ struct CutoffToG
 			return 0.f;
 	}
 private:
-	nvs::memoryless::trigTables<float_t> trig;
+	nvs::memoryless::TrigTables<float_t> trig;
 	float_t _fs_inv;
 };
 
-static memoryless::SinTable<16384> sinTable;
+static memoryless::SinTable<float, 16384> sinTable_f;
+static memoryless::SinTable<double, 16384> sinTable_d;
 
 //==================================================================================
 
@@ -118,7 +119,7 @@ public:
 	virtual float_t operator()(float_t input, float_t cutoff, float_t resonance) = 0;
 	
 protected:
-	nvs::memoryless::trigTables<float_t> trig;
+	nvs::memoryless::TrigTables<float_t> trig;
 	float_t _fs_inv;
 	float_t _cutoffTarget, _resonanceTarget;
 	float_t _w_c, _q;
@@ -598,11 +599,31 @@ private:
 
 
 //==================================================================================
+namespace {
+template<typename>
+inline constexpr bool always_false = false;
+}
 
 template<typename float_t>
 class svf_prototype
 {
 public:
+	using TableT = memoryless::SinTable<float_t, 16384>;
+
+	svf_prototype()
+	  : sinTable([]() -> TableT const& {
+			if constexpr (std::is_same_v<float_t, float>) {
+				return sinTable_f;
+			}
+			else if constexpr (std::is_same_v<float_t, double>) {
+				return sinTable_d;
+			}
+			else {
+				static_assert(always_false<float_t>, "svf_prototype only supports float or double");
+			}
+		}())
+	{}
+	
 	float_t lp() {return _outputs.lp;}
 	float_t bp() {return _outputs.bp;}
 	float_t hp() {return _outputs.hp;}
@@ -617,6 +638,8 @@ protected:
 	{
 		float_t lp, bp;
 	} _state = { 0.f, 0.f };
+	
+	TableT const &sinTable;
 };
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 template<typename float_t>
@@ -754,8 +777,8 @@ public:
 		{
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(this->_state.lp);
+			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
+			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(this->_state.lp);
 
 			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
@@ -763,24 +786,24 @@ public:
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp); // is this the right move?
-			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp); // is this the right move?
+			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
+			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(hp);
-			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_LUT(tempstate[0]);
+			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
+			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
 
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);

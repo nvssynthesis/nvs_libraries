@@ -9,6 +9,16 @@ add_compile_definitions(
 		_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
 )
 
+include(FetchContent)
+
+FetchContent_Declare(
+		Catch2
+		GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+		GIT_TAG        v3.8.1
+)
+
+FetchContent_MakeAvailable(Catch2)
+
 include_directories(
 		include
 		external/sprout
@@ -21,5 +31,11 @@ target_include_directories(nvs_libraries INTERFACE
 )
 
 enable_testing()
+
 add_executable(nvs_gen_test tests/nvs_gen_test.cpp)
-target_link_libraries(nvs_gen_test PRIVATE nvs_libraries)
+add_executable(nvs_LUT_test tests/nvs_LUT_test.cpp)
+target_link_libraries(nvs_gen_test PRIVATE nvs_libraries Catch2::Catch2WithMain)
+target_link_libraries(nvs_LUT_test PRIVATE nvs_libraries Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(nvs_gen_test)

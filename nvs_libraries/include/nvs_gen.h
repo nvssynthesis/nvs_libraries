@@ -24,38 +24,35 @@ private:
 	float_t phaseDelta {0.f};	// frequency / samplerate
 	float_t _sampleRate {0.f};
 public:
-	inline void setSampleRate(float_t sr){
-		assert (sr > 0.f);
-		_sampleRate = sr;
+	void setSampleRate(float_t sampleRate){
+		assert (sampleRate > 0.f);
+		_sampleRate = sampleRate;
 	}
-	inline void setPhase(float_t ph){
-		phase = ph;
+	void setPhase(float_t phi){
+		phase = phi;
 	}
-	inline float_t getPhase() const {
+	float_t getPhase() const {
 		return phase;
 	}
-	inline void reset(){
+	void reset(){
 		phase = 0.f;
 	}
-	inline void setPhaseDelta(float_t pd){
+	void setPhaseDelta(float_t pd){
 		phaseDelta = pd;
 	}
 	// may be called every sample, so no check for aliasing or divide by 0
-	inline void setFrequency(float_t frequency){
+	void setFrequency(float_t frequency){
 		assert(_sampleRate > static_cast<float_t>(0.f));
 		phaseDelta = frequency / _sampleRate;
 	}
-	inline float_t getFrequency() const {
+	float_t getFrequency() const {
 		return phaseDelta * _sampleRate;
 	}
 	// prefix increment
 	phasor& operator++(){
 		assert(phaseDelta == phaseDelta);
 		phase += phaseDelta;
-		while (phase >= 1.f)
-			phase -= 1.f;
-		while (phase < 0.f)
-			phase += 1.f;
+		phase = nvs::memoryless::mspWrap(phase);
 		return *this;
 	}
 	// postfix increment
@@ -63,10 +60,7 @@ public:
 		assert(phaseDelta == phaseDelta);
 		phasor old = *this;
 		phase += phaseDelta;
-		while (phase >= 1.f)
-			phase -= 1.f;
-		while (phase < 0.f)
-			phase += 1.f;
+		phase = nvs::memoryless::mspWrap(phase);
 		return old;
 	}
 };
@@ -114,11 +108,11 @@ public:
 	T operator()(T x){
 		T val;
 		if (x > histo)
-			val = 1;//static_cast<T>(1);
+			val = 1;
 		else if (x < histo)
-			val = -1;//static_cast<T>(-1);
+			val = -1;
 		else // (x == histo)
-			val = 0;//static_cast<T>(0);
+			val = 0;
 
 		histo = x;
 		return val;
@@ -131,12 +125,12 @@ private:
 	T histo {static_cast<T>(0)};
 	change<T> _change;
 public:
-	T operator()(T x){
+	T operator()(T const x){
 		constexpr T zero = static_cast<T>(0);
-		
+
 		T diff = x - histo;
 		T sum = x + histo;
-		T div = diff / sum;
+		T div = (sum != 0.0) ? diff / sum : diff;
 //		T abs = (div < zero) ? -div : div;
 		T abs = std::abs(div);
 		T cmp = abs > static_cast<T>(0.5);
@@ -167,8 +161,9 @@ std::array<T, numOuts>
 gateSelect(size_t outputSelection, T x){
 	constexpr T zero = static_cast<T>(0);
 	std::array<T, numOuts> outs {zero};
-	if (outputSelection == 0)
+	if (outputSelection == 0) {
 		return outs;
+	}
 	outputSelection -= 1;	// now 0 will index 0
 	outputSelection = std::min(outputSelection, numOuts - 1);
 	
@@ -373,97 +368,9 @@ inline T peek(T const *data, double fracIndex, unsigned long length){
 		T const x2 = readBuff<T, b>(data, iidx + 2, length);
 		return hermite(static_cast<T>(frac), xm1, x0, x1, x2);
 	}
-//	assert(false);
+	assert(false);
+	return T{0};
 }
-
-#if 0
-/*
- Read values from a buffer.
- 
-Template args:
- -number of output channels, used to determine size of std::array
- -sample data type, normally float
- -container type for each data channel
-
-Construction args:
- -an array of references to buffers (default type vector of floats).
- 
-Call operator args:
- -sample index to read (no interpolation); indices out of range return zero.
- -channel offset (default 0).
- */
-template<size_t numOutputChans, typename float_t = float, typename singleChannelBuffer_t = std::vector<float_t>>
-struct peek {
-private:
-	typedef std::array<singleChannelBuffer_t const *, numOutputChans> multiChannelBuffer_t;
-	std::array<singleChannelBuffer_t const *, numOutputChans> buffer;
-	
-public:
-	peek(std::array<singleChannelBuffer_t const *, numOutputChans> ptrsToBuffers)
-	:	buffer(ptrsToBuffers){}
-	
-	void replaceBuffer(std::array<singleChannelBuffer_t const *, numOutputChans> newBuffer) {
-		buffer = newBuffer;
-	}
-	
-	template<typename index_t>
-	inline index_t clampSample(index_t index, index_t buffLength) const {
-		return nvs::memoryless::clamp<index_t>(index, 0, buffLength - 1);
-	}
-	template<typename index_t>
-	inline index_t wrapSample(index_t index, index_t buffLength) const {
-		while (index < 0)
-			index += buffLength;
-		while (index >= buffLength)
-			index -= buffLength;
-		return index;
-	}
-	
-	template<typename index_t, boundsModes_e boundsMode = boundsModes_e::wrap>
-	std::array<float_t, numOutputChans>
-	operator()(index_t index, int channel_offset = 0) const {
-		std::array<float_t, numOutputChans> channelwiseSamps {};
-		
-		for (int chan = 0; chan < numOutputChans; ++chan){
-			if (buffer[chan] == nullptr) {
-				return channelwiseSamps;	// array of zeros
-			}
-		}
-		
-		index_t index_0 = static_cast<index_t>(index);
-		for (int chan = 0; chan < numOutputChans; ++chan){
-			int chan_tmp = nvs::memoryless::clamp<int>(chan + channel_offset, 0, numOutputChans - 1);
-			
-			singleChannelBuffer_t const& thisChannelBuffer = *(buffer[chan_tmp]);
-			
-			if (thisChannelBuffer.size() == 0){
-				channelwiseSamps[chan] = static_cast<float_t>(0.f);
-				continue;
-			}
-		
-			index_t tmp_idx_0;
-			if constexpr (boundsMode == boundsModes_e::clamp){
-				tmp_idx_0 = clampSample<index_t>(index_0, thisChannelBuffer.size());
-			}
-			else if constexpr (boundsMode == boundsModes_e::wrap){
-				tmp_idx_0 = wrapSample<index_t>(index_0, thisChannelBuffer.size());
-			}
-			channelwiseSamps[chan] = thisChannelBuffer[tmp_idx_0];
-		}
-		return channelwiseSamps;
-	}
-	
-	std::array<size_t, numOutputChans>
-	getSizes() const {
-		std::array<size_t, numOutputChans> sizes;
-		for (size_t chan = 0; chan < numOutputChans; ++chan){
-			sizes[chan] = (*(buffer[chan])).size();
-		}
-
-		return sizes;
-	}
-};
-#endif
 
 }	// namespace gen
 }	// namespace nvs

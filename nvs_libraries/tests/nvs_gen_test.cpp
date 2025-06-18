@@ -3,90 +3,123 @@
 #include <vector>
 #include <string>
 
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+#include "catch2/matchers/catch_matchers.hpp"
+#include "catch2/matchers/catch_matchers_vector.hpp"
+
 using namespace nvs::gen;
 
-void change_test(){
+TEST_CASE("change function tests", "[change]") {
 	change<float> c;
-	std::vector<float> input = {0.f, 0.1f, 0.01f, -100.f, -0.5f};
-	std::vector<float> expected_output = {
+	std::vector<float> const input = {0.f, 0.1f, 0.01f, -100.f, -0.5f};
+	std::vector<float> const expected_output = {
 		0.f, 1.f, -1.f, -1.f, 1.f
 	};
-	for (auto i = 0; i < input.size(); ++i){
-		auto out = c(input[i]);
-		assert(out == expected_output[i]);
+
+	for (auto i = 0; i < input.size(); ++i) {
+		auto const out = c(input[i]);
+		REQUIRE(out == expected_output[i]);
 	}
-	std::cout << "change_test success\n";
 }
 
-std::vector<float> makePhasorWave(size_t length, float freq, float fs){
+std::vector<float> makePhasorWave(size_t const length, const float freq, const float fs, const float initialPhase=0.f){
 	std::vector<float> wave(length);
-	phasor ph(fs);
+	phasor<float> ph;
+	ph.setSampleRate(fs);
 	ph.setFrequency(freq);
-	for (auto &e : wave)
+	ph.setPhase(initialPhase);
+	for (auto &e : wave) {
 		e = (ph++).getPhase();
-	assert(wave.size() == length);
+	}
+    REQUIRE(wave.size() == length);
 	return wave;
 }
 
-void phasor_test(){
+TEST_CASE("phasor tests", "[phasor]") {
 	constexpr size_t N = 10;
-	std::vector<float> ph = makePhasorWave(N, 22050.f, 44100.f);
-	std::vector<float> expected_out = {
-		0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f
-	};
-	size_t out_idx = 0;
-	for (auto &e : ph)
-		assert(e == expected_out[out_idx++]);
-	std::cout << "phasor test nyquist success\n";
-	ph = makePhasorWave(10, 0.f, 44100.f);
-	expected_out = {
-		0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-	};
-	std::cout << "ABOUT to ACTUALLY phasor test\n";
-	assert(ph.size() == expected_out.size());
-	assert(ph.size() == N);
-	out_idx = 0;
-	for (float &val : ph){
-		float expected = expected_out[out_idx++];
-		if (val != expected){
-			std::cout << "expected: " << expected << " val: " << val << '\n';
+
+	SECTION("nyquist frequency test") {
+		std::vector<float> const ph = makePhasorWave(N, 22050.f, 44100.f);
+		std::vector<float> const expected_out = {
+			0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f, 0.f, 0.5f
+		 };
+
+		REQUIRE(ph.size() == expected_out.size());
+		for (size_t i = 0; i < ph.size(); ++i) {
+			REQUIRE(ph[i] == expected_out[i]);
 		}
-		assert(val == expected);
 	}
 
-	std::cout << "phasor test DC success\n";
+	SECTION("DC (0Hz) frequency test") {
+		std::vector<float> const ph = makePhasorWave(N, 0.f, 44100.f);
+		std::vector<float> const expected_out = {
+			0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
+		 };
+
+		REQUIRE(ph.size() == expected_out.size());
+		REQUIRE(ph.size() == N);
+
+		for (size_t i = 0; i < ph.size(); ++i) {
+			INFO("Index: " << i << ", Expected: " << expected_out[i] << ", Actual: " << ph[i]);
+			REQUIRE(ph[i] == expected_out[i]);
+		}
+	}
+}
+TEST_CASE("ramp2trig tests", "[ramp2trig]") {
+	SECTION("basic trigger detection") {
+		ramp2trig<float> r2t;
+
+		// Test with manually crafted input that has clear discontinuities
+		std::vector<float> const input = {
+			0.0f,   // Initial state
+			0.0f,   // Initial state
+			0.25f,  // Sudden increment
+			0.5f,   // Normal increment - no trigger expected
+			0.75f,  // Normal increment - no trigger expected
+			0.1f,   // RESET/WRAP - trigger expected here!
+			0.35f,  // Normal increment after reset
+			0.6f,   // Normal increment
+			0.85f,  // Normal increment
+			0.05f   // RESET/WRAP - trigger expected here!
+		};
+
+		std::vector<float> results;
+		for (float val : input) {
+			results.push_back(r2t(val));
+		}
+
+		// First sample behavior might be special, so test from index 1
+		REQUIRE(results[0] == 0.f); // No activity
+		REQUIRE(results[1] == 0.f); // No activity
+		REQUIRE(results[2] == 1.f); // Sudden increment
+		REQUIRE(results[3] == 0.f); // Normal increment
+		REQUIRE(results[4] == 0.f); // Normal increment
+		REQUIRE(results[5] == 1.f); // Reset detected!
+		REQUIRE(results[6] == 0.f); // Normal increment after reset
+		REQUIRE(results[7] == 0.f); // Normal increment
+		REQUIRE(results[8] == 0.f); // Normal increment
+		REQUIRE(results[9] == 1.f); // Another reset detected!
+	}
 }
 
-void ramp2trig_test(){
-	size_t len = 10;
-	auto wave = makePhasorWave(len, 24000.f, 48000.f);
-	std::vector<float> expected = {
-		0.f, 1.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1.f
-	};
+TEST_CASE("switcher tests", "[switcher]") {
+	SECTION("basic switching behavior") {
+		std::vector<int> v1 =       {1, 2, 3, 4, 5, 6, 7, 8, 9};
+		std::vector<int> v2 =       {9, 8, 7, 6, 5, 4, 3, 2, 1};
+		std::vector<int> control =  {0, 10, 0, -1, 0, 5, 0, -100, 0};
+		std::vector<int> expected = {9, 2, 7, 4, 5, 6, 3, 8, 1};
 
-	ramp2trig<float> r2t;
+		REQUIRE(v1.size() == v2.size());
+		REQUIRE(v1.size() == control.size());
+		REQUIRE(v1.size() == expected.size());
 
-	size_t idx = 0;
-	for (auto &e : wave){
-		auto expect = expected[idx++];
-		auto out = r2t(e);
-		// std::cout << "res: " << out << " expected: " << expect << '\n';
-		assert(out == expect);
+		for (size_t i = 0; i < v1.size(); ++i) {
+			auto out = switcher(control[i], v1[i], v2[i]);
+			INFO("Index: " << i << ", Control: " << control[i] << ", V1: " << v1[i] << ", V2: " << v2[i] << ", Expected: " << expected[i] << ", Got: " << out);
+			REQUIRE(out == expected[i]);
+		}
 	}
-	std::cout << "ramp2trig test success\n";
-}
-
-void switcher_test(){
-	std::vector<int> v1 = 		{1,2,3,4,5,6,7,8,9};
-	std::vector<int> v2 = 		{9,8,7,6,5,4,3,2,1};
-	std::vector<int> control =  {0,10,0,-1,0,5,0,-100,0};	// converts to bool
-	std::vector<int> expected = {9,2,7,4,5,6,3,8,1};
-	size_t idx = 0;
-	for (; idx < v1.size(); ++idx){
-		auto out = switcher(control[idx], v1[idx], v2[idx]);
-		assert(out == expected[idx]);
-	}
-	std::cout << "switcher test success\n";
 }
 
 template<typename T>
@@ -99,77 +132,127 @@ void print(std::array<T, N> xArr, std::string s = " "){
 		print(e, s);
 }
 
-void gateSelect_test(){
-	constexpr size_t N = 3;
+TEST_CASE("gateSelect tests", "[gateSelect]") {
+	SECTION("gate selection with different indices") {
+		constexpr size_t N = 3;
+		constexpr float val = 10.f;
 
-	float val = 10.f;
-	for (size_t i = 0; i < N; ++i){
-		std::array<float, N> res = gateSelect<float, N> (val, i);
-		// print(res, "\n");
-		print(i, "   i\n");
+		for (size_t i = 0; i < N; ++i) {
+			std::array<float, N> res = gateSelect<float, N>(i, val);
+			std::vector<float> res_vec(res.begin(), res.end());  // Convert to vector
 
-		if (i > 0) {
-			for (int j = 0; j < N; ++j){
-				print(j, "     j\n");
-				if (j == (i - 1)){
-					assert(res[j] == val);
-				}
-				else {
-					assert(res[j] == 0.f);
-				}
-			}
-		} 
-		else {
-			for (int j = 0; j < N; ++j){
-				assert(res[j] == 0);
+			if (i > 0) {
+				std::vector<float> selection(N, 0.f);
+				selection[i - 1] = val;
+				REQUIRE_THAT(res_vec, Catch::Matchers::Equals(selection));
+			} else {
+				std::vector<float> const zeros(N, 0.f);
+				REQUIRE_THAT(res_vec, Catch::Matchers::Equals(zeros));
 			}
 		}
 	}
-	std::cout << "gate select test success\n"; 
 }
 
-void latch_test(){
-	phasor ph(10.f);	// sample rate of 10
-	ph.setFrequency(2.f);
-	constexpr size_t N = 10;
-	std::array<float, N> phRec;
-	for (auto &e : phRec)
-		e = (ph++).getPhase();
+TEST_CASE("latch tests", "[latch]") {
+	SECTION("latch behavior with phasor input") {
+		phasor<float> ph;
+		ph.setSampleRate(10.f);
+		ph.setFrequency(2.f);
 
-	std::array<float, N> expected = {
-		0.f, 0.f, 0.4f, 0.6f, 0.8f, 0.f, 0.2f, 0.4f, 0.4f, 0.4f
-	};
-	latch<float> l;
-	size_t i = 0;
-	bool letPass = false;
-	for (float e : phRec){
-		auto exp = expected[i++];
-		if (i == 3){
-			letPass = true;
-		} else if (i == 9){
-			letPass = false;
+		constexpr size_t N = 10;
+		std::array<float, N> phRec;
+		for (auto &e : phRec) {
+			e = (ph++).getPhase();
 		}
-		auto v = l(e, letPass);
 
-		if (v != exp)
-			std::cout << "v: " << v << " expected: " << exp << '\n';
-		assert(v == exp);
+		std::array<float, N> const expected = {
+			0.f, 0.f, 0.4f, 0.6f, 0.8f, 0.f, 0.2f, 0.4f, 0.4f, 0.4f
+		};
+
+		latch<float> l;
+		bool letPass = false;
+
+		for (size_t i = 0; i < phRec.size(); ++i) {
+			// Update letPass based on sample index
+			if (i == 2) {        // i+1 == 3 in your original (since you increment before check)
+				letPass = true;
+			} else if (i == 8) { // i+1 == 9 in your original
+				letPass = false;
+			}
+
+			float const input = phRec[i];
+			float const output = l(input, letPass);
+			float const exp = expected[i];
+
+			INFO("Index: " << i << ", Input: " << input << ", LetPass: " << letPass
+				 << ", Expected: " << exp << ", Got: " << output);
+			REQUIRE(output == exp);
+		}
 	}
-	std::cout << "latch test success\n";
 }
 
-void parzen_demo(){
-	constexpr size_t N = 20;
-	std::vector<float> wave = makePhasorWave(N, 90.f, 1000.f);
-	for (size_t i = 0; i < N; ++i){
-		std::cout << "wave: " << wave[i] << " parzen: " << parzen<float>(wave[i]) << '\n';
+TEST_CASE("parzen window tests", "[parzen][windowing]") {
+	using Catch::Approx;
+	SECTION("boundary conditions") {
+		// Half-window should be 0 and 1 at edges (0 and 1)
+		REQUIRE(parzen<float>(0.0f) == Approx(0.0f));
+		REQUIRE(parzen<float>(1.0f) == Approx(1.0f));
 	}
-}
 
-int main(void){
-	switcher_test();
-	parzen_demo();
+	SECTION("monotonic increasing") {
+		// Should be strictly increasing from 0 to 1
+		constexpr size_t N = 20;
+		std::vector<float> values;
 
-	return 0;
+		for (size_t i = 0; i <= N; ++i) {
+			float t = static_cast<float>(i) / N;
+			values.push_back(parzen<float>(t));
+		}
+
+		for (size_t i = 1; i < values.size(); ++i) {
+			INFO("Checking monotonicity at index " << i << ": " << values[i-1] << " < " << values[i]);
+			REQUIRE(values[i] >= values[i-1]); // Non-decreasing
+		}
+	}
+
+	SECTION("curvature properties") {
+		// Test that it's curved (not linear)
+		float quarter = parzen<float>(0.25f);
+		float half = parzen<float>(0.5f);
+		float three_quarter = parzen<float>(0.75f);
+
+		// For Parzen curvature, early values should be lower than linear
+		REQUIRE(quarter < 0.25f);  // Should be below linear interpolation
+		REQUIRE(half < 0.5f);      // Should be below linear interpolation
+
+		// But still increasing
+		REQUIRE(quarter < half);
+		REQUIRE(half < three_quarter);
+	}
+	SECTION("range constraints") {
+		// All values should be in [0,1] range
+		for (float t = 0.0f; t <= 1.0f; t += 0.1f) {
+			float val = parzen<float>(t);
+			INFO("Testing range at t=" << t << ", value=" << val);
+			REQUIRE(val >= 0.0f);
+			REQUIRE(val <= 1.0f);
+		}
+	}
+	SECTION("creates symmetric parzen from triangle") {
+		// Create a triangle wave (0→1→0)
+		std::vector<float> const triangle = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f, 0.75f, 0.5f, 0.25f, 0.0f};
+		std::vector<float> windowed;
+
+		for (float t : triangle) {
+			windowed.push_back(parzen<float>(t));
+		}
+
+		// Result should be symmetric
+		REQUIRE(windowed[0] == Approx(windowed[8])); // edges
+		REQUIRE(windowed[1] == Approx(windowed[7])); // inner points
+		REQUIRE(windowed[2] == Approx(windowed[6]));
+		REQUIRE(windowed[3] == Approx(windowed[5]));
+		// windowed[4] is the peak
+	}
 }
 

@@ -50,7 +50,7 @@ public:
 private:
 	T sampleRate, fs_inv;
 	T _phase, _lastPhase;
-	const nvs::memoryless::trigTables<T> shapes;
+	const nvs::memoryless::TrigTables<T> shapes;
 };
 } // namespace lfo
 } // namespace nvs
@@ -102,7 +102,7 @@ T simple_lfo<T>::tri() const {
 template<typename T>
 T simple_lfo<T>::sine() const {
 	using namespace nvs::memoryless;
-	T sinewave = shapes.up_cos_LUT(_phase);
+	T sinewave = shapes.cos_unipolar_interp(_phase);
 	return sinewave;
 }
 template<typename T>

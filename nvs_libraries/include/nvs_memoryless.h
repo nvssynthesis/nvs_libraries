@@ -43,6 +43,33 @@ namespace math_impl {
 	}
 
 	template<FloatingPoint T>
+	constexpr T tan(T x) noexcept {
+#if USING_SPROUT
+		return sprout::tan(x);
+#else
+		return std::tan(x);
+#endif
+	}
+
+	template<FloatingPoint T>
+constexpr T atan(T x) noexcept {
+#if USING_SPROUT
+		return sprout::atan(x);
+#else
+		return std::atan(x);
+#endif
+	}
+
+	template<FloatingPoint T>
+	constexpr T tanh(T x) noexcept {
+#if USING_SPROUT
+		return sprout::tanh(x);
+#else
+		return std::tanh(x);
+#endif
+	}
+
+	template<FloatingPoint T>
 	constexpr T sin(T x) noexcept {
 #if USING_SPROUT
 		return sprout::sin(x);
@@ -57,24 +84,6 @@ namespace math_impl {
 		return sprout::cos(x);
 #else
 		return std::cos(x);
-#endif
-	}
-
-	template<FloatingPoint T>
-	constexpr T tan(T x) noexcept {
-#if USING_SPROUT
-		return sprout::tan(x);
-#else
-		return std::tan(x);
-#endif
-	}
-
-	template<FloatingPoint T>
-	constexpr T tanh(T x) noexcept {
-#if USING_SPROUT
-		return sprout::tanh(x);
-#else
-		return std::tanh(x);
 #endif
 	}
 
@@ -243,15 +252,15 @@ concept HasRange = requires {
 	{ T::max } -> std::convertible_to<double>;
 } && (T::min < T::max);
 
-template<typename Derived, typename float_t, HasRange RangeType, size_t Resolution,
+template<typename Derived, typename sample_t, typename index_t, HasRange RangeType, size_t Resolution,
 	IndexBoundaryPolicy BoundaryPolicy, InterpolationType DefaultInterpType>
-requires PowerOfTwo<Resolution> && FloatingPoint<float_t>
+requires PowerOfTwo<Resolution> && FloatingPoint<sample_t> && FloatingPoint<index_t>
 class LookupTableBase {
 public:
 	virtual ~LookupTableBase() = default;
 
 	[[nodiscard]]
-	virtual constexpr float_t operator()(float_t x) const noexcept
+	virtual constexpr sample_t operator()(index_t x) const noexcept
 	{
 		if constexpr (DefaultInterpType == InterpolationType::Rounded) { return rounded(x); }
 		else if constexpr (DefaultInterpType == InterpolationType::Linear) { return linear(x); }
@@ -259,27 +268,15 @@ public:
 		return 0.f;
 	}
 	[[nodiscard]]
-	virtual constexpr float operator()(double x) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		if constexpr (DefaultInterpType == InterpolationType::Rounded) { return rounded(x); }
-		else if constexpr (DefaultInterpType == InterpolationType::Linear) { return linear(x); }
-		else { assert(false); } // No such interpolation type.
-		return 0.f;
-	}
-	[[nodiscard]]
-	virtual constexpr float_t rounded(float_t x) const noexcept {
-		float_t const normalized = scale(x, static_cast<float_t>(min_x), static_cast<float_t>(x_range));
-		float_t const bound_idx = constrainIndexBy01(normalized);
-		float_t const continuous_index = [bound_idx]() {
+	virtual constexpr sample_t rounded(index_t x) const noexcept {
+		index_t const normalized = scale(x, static_cast<index_t>(min_x), static_cast<index_t>(x_range));
+		index_t const bound_idx = constrainIndexBy01(normalized);
+		index_t const continuous_index = [bound_idx]() {
 			if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
-				return bound_idx * static_cast<float_t>(Resolution);
+				return bound_idx * static_cast<index_t>(Resolution);
 			}
 			else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
-				return bound_idx * static_cast<float_t>(Resolution - 1);
+				return bound_idx * static_cast<index_t>(Resolution - 1);
 			}
 		}();
 
@@ -289,43 +286,14 @@ public:
 		return rounded_lookup(rounded_index);
 	}
 	[[nodiscard]]
-	virtual constexpr float rounded(double x) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		double const normalized = scale(x, min_x, x_range);
-		double const bound_idx = constrainIndexBy01(normalized);
-		const float continuous_index = [bound_idx]() {
-			if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
-				return bound_idx * static_cast<double>(Resolution);
-			}
-			else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
-				return bound_idx * static_cast<double>(Resolution - 1);
-			}
-		}();
-		auto const rounded_index = nvs::memoryless::round(continuous_index);
+	virtual constexpr sample_t linear(index_t x) const noexcept {
+		const index_t normalized = scale(x, static_cast<index_t>(min_x), static_cast<index_t>(x_range));
+		return interpolated_lookup(normalized);
+	}
+	using value_type = sample_t;        // What the table returns
+	using index_type = index_t;         // What you pass in for lookup
+	using size_type = size_t;           // For consistency with STL
 
-		return rounded_lookup(rounded_index);
-	}
-	[[nodiscard]]
-	virtual constexpr float_t linear(float_t x) const noexcept {
-		const float_t normalized = scale(x, static_cast<float_t>(min_x), static_cast<float_t>(x_range));
-		return interpolated_lookup(normalized);
-	}
-	// this is simply a specialization for when the table type is float but we want double-precision indexing
-	[[nodiscard]]
-	virtual constexpr float linear(double x) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		const float_t normalized = scale(x, min_x, x_range);
-		return interpolated_lookup(normalized);
-	}
-	using value_type = float_t;
 protected:
 	static constexpr auto constrainIndexBy01(std::floating_point auto fpIdx) {
 		if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
@@ -346,32 +314,30 @@ protected:
 		else { assert(false); return 0; } // No such boundary policy.
 
 	}
-	constexpr float_t rounded_lookup(size_t index) const noexcept {
+	constexpr sample_t rounded_lookup(size_t index) const noexcept {
 		assert(index < values_.size());
 		return values_[index];
 	}
 
-	constexpr float_t interpolated_lookup(auto normalized_index) const noexcept
+	constexpr sample_t interpolated_lookup(index_t normalized_index) const noexcept
 	{
-		assert ((0.0 <= normalized_index) && (normalized_index <= 1.0));
-
-		const float scaled_index = [normalized_index]() {
+		const index_t scaled_index = [normalized_index]() {
 			if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
-				return normalized_index * static_cast<float>(Resolution);
+				return normalized_index * static_cast<index_t>(Resolution);
 			}
 			else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
-				return normalized_index * static_cast<float>(Resolution - 1);
+				return normalized_index * static_cast<index_t>(Resolution - 1);
 			}
 		}();
 
 		const auto floored_index = static_cast<size_t>(scaled_index);
 		assert (floored_index < values_.size());
-		const float frac = scaled_index - static_cast<float>(floored_index);
 
+		const sample_t frac = scaled_index - static_cast<sample_t>(floored_index);
 		const auto next_index = constrainIndexByReso(floored_index + 1);
 		return linterp(rounded_lookup(floored_index), rounded_lookup(next_index), frac);
 	}
-	std::array<float_t, Resolution> values_{};
+	std::array<sample_t, Resolution> values_{};
 	static constexpr double min_x = RangeType::min;
 	static constexpr double max_x = RangeType::max;
 	static constexpr double x_range = max_x - min_x;
@@ -388,13 +354,15 @@ struct IRange {
 	static_assert(std::same_as<decltype(Min), decltype(Max)>,
 				 "Min and Max must be the same type");
 };
-template<typename float_t, HasRange RangeType, size_t Resolution,
+template<typename sample_t, typename index_t, HasRange RangeType, size_t Resolution,
 	InterpolationType DefaultInterpType>
-class ExpTable final : public LookupTableBase<ExpTable<float_t, RangeType, Resolution, DefaultInterpType>,
-	float_t, RangeType, Resolution, IndexBoundaryPolicy::Clamp, DefaultInterpType>
+class ExpTable final : public LookupTableBase<ExpTable<sample_t, index_t, RangeType, Resolution, DefaultInterpType>,
+	sample_t, index_t, RangeType, Resolution, IndexBoundaryPolicy::Clamp, DefaultInterpType>
 {
-	using Base = LookupTableBase<ExpTable, float, RangeType, Resolution,
+	using Base = LookupTableBase<ExpTable, sample_t, index_t, RangeType, Resolution,
 		IndexBoundaryPolicy::Clamp, DefaultInterpType>;
+	static_assert(std::is_same_v<typename Base::value_type, sample_t>);
+	static_assert(std::is_same_v<typename Base::index_type, index_t>);
 
 public:
 	constexpr ExpTable() noexcept
@@ -403,23 +371,69 @@ public:
 
 		for (size_t i = 0; i < Resolution; ++i) {
 			const double x = static_cast<double>(Base::min_x) + (double)i * increment;
-			this->values_[i] = static_cast<float_t>(math_impl::exp(x));
+			this->values_[i] = static_cast<sample_t>(math_impl::exp(x));
 		}
 	}
 };
+
+template<typename sample_t, typename index_t, HasRange RangeType, size_t Resolution,
+InterpolationType DefaultInterpType>
+class AtanTable final : public LookupTableBase<AtanTable<sample_t, index_t, RangeType, Resolution, DefaultInterpType>,
+	sample_t, index_t, RangeType, Resolution, IndexBoundaryPolicy::Clamp, DefaultInterpType>
+{
+	using Base = LookupTableBase<AtanTable, sample_t, index_t, RangeType, Resolution,
+		IndexBoundaryPolicy::Clamp, DefaultInterpType>;
+	static_assert(std::is_same_v<typename Base::value_type, sample_t>);
+	static_assert(std::is_same_v<typename Base::index_type, index_t>);
+
+public:
+	constexpr AtanTable() noexcept
+	{
+		const double increment = Base::x_range / static_cast<double>(Resolution - 1);
+
+		for (size_t i = 0; i < Resolution; ++i) {
+			const double x = static_cast<double>(Base::min_x) + (double)i * increment;
+			this->values_[i] = static_cast<sample_t>(math_impl::atan(x));
+		}
+	}
+};
+
+template<typename sample_t, typename index_t, HasRange RangeType, size_t Resolution,
+	InterpolationType DefaultInterpType>
+class TanhTable final : public LookupTableBase<TanhTable<sample_t, index_t, RangeType, Resolution, DefaultInterpType>,
+		sample_t, index_t, RangeType, Resolution, IndexBoundaryPolicy::Clamp, DefaultInterpType>
+{
+	using Base = LookupTableBase<TanhTable, sample_t, index_t, RangeType, Resolution,
+		IndexBoundaryPolicy::Clamp, DefaultInterpType>;
+	static_assert(std::is_same_v<typename Base::value_type, sample_t>);
+	static_assert(std::is_same_v<typename Base::index_type, index_t>);
+
+public:
+	constexpr TanhTable() noexcept
+	{
+		const double increment = Base::x_range / static_cast<double>(Resolution - 1);
+
+		for (size_t i = 0; i < Resolution; ++i) {
+			const double x = static_cast<double>(Base::min_x) + (double)i * increment;
+			this->values_[i] = static_cast<sample_t>(math_impl::tanh(x));
+		}
+	}
+};
+
 struct CosSinRange {
 	constexpr static double min {0.0};
 	constexpr static double max {math_impl::two_pi<double>()};
 };
 
-template<typename float_t, size_t Resolution, InterpolationType DefaultInterpType>
-class CosTable : public LookupTableBase<CosTable<float_t, Resolution, DefaultInterpType>,
-	float_t, CosSinRange, Resolution,
+template<typename sample_t, typename index_t, size_t Resolution, InterpolationType DefaultInterpType>
+class CosTable : public LookupTableBase<CosTable<sample_t, index_t, Resolution, DefaultInterpType>,
+	sample_t, index_t, CosSinRange, Resolution,
 	IndexBoundaryPolicy::Wrap, DefaultInterpType>
 {
-	using Base = LookupTableBase<CosTable, float_t, CosSinRange, Resolution,
+	using Base = LookupTableBase<CosTable, sample_t, index_t, CosSinRange, Resolution,
 		IndexBoundaryPolicy::Wrap, DefaultInterpType>;
-	static_assert(std::is_same_v<typename Base::value_type, float_t>);
+	static_assert(std::is_same_v<typename Base::value_type, sample_t>);
+	static_assert(std::is_same_v<typename Base::index_type, index_t>);
 
 	static constexpr double two_pi { math_impl::two_pi<double>() };
 	static constexpr double inv_two_pi { 1.0 / math_impl::two_pi<double>() };
@@ -432,244 +446,112 @@ public:
 
 		for (size_t i = 0; i < Resolution; ++i) {
 			const double phase = static_cast<double>(i) * increment;
-			this->values_[i] = static_cast<float_t>(math_impl::cos(phase));
+			this->values_[i] = static_cast<sample_t>(math_impl::cos(phase));
 		}
 	}
 	~CosTable() override = default;
 
 	[[nodiscard]]
-	constexpr float_t operator()(float_t phase) const noexcept override
+	constexpr sample_t operator()(index_t phase) const noexcept override
 	{
 		// phase = Base::constrainIndexByReso(phase);
 		phase = mspWrap(phase * inv_two_pi) * two_pi;
 		return Base::operator()(phase);
 	}
 	[[nodiscard]]
-	constexpr float operator()(double phase) const noexcept override
-	{
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::operator()(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t cos(float_t phase) const noexcept
+	constexpr sample_t cos(index_t phase) const noexcept
 	{
 		return operator()(phase);
 	}
 	[[nodiscard]]
-	constexpr float cos(double phase) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return operator()(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t cosRounded(float_t phase) const noexcept {
+	constexpr sample_t cosRounded(index_t phase) const noexcept {
 		phase = constrainIndexByReso(phase);
 		return Base::rounded(phase);
 	}
 	[[nodiscard]]
-	constexpr float cosRounded(double phase) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::rounded(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t cosLinear(float_t phase) const noexcept
+	constexpr sample_t cosLinear(index_t phase) const noexcept
 	{
 		phase = mspWrap(phase * inv_two_pi) * two_pi;
 		return Base::linear(phase);
 	}
 	[[nodiscard]]
-	inline constexpr float_t linear(float_t phase) const noexcept override
+	inline constexpr sample_t linear(index_t phase) const noexcept override
 	{
 		return cosLinear(phase);
 	}
 	[[nodiscard]]
-	constexpr float cosLinear(double phase) const noexcept
+	constexpr sample_t sin(index_t phase) const noexcept
 	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::linear(phase);
-	}
-	[[nodiscard]]
-	constexpr float linear(double phase) const noexcept override {
-		return cosLinear(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t sin(float_t phase) const noexcept
-	{
-		phase = phase - math_impl::halfpi<double>();
+		phase = phase - math_impl::halfpi<index_t>();
 		phase = mspWrap(phase * inv_two_pi) * two_pi;
 		return Base::operator()(phase);
 	}
 	[[nodiscard]]
-	constexpr float sin(double phase) const noexcept
+	constexpr sample_t sinRounded(index_t phase) const noexcept
 	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = phase - math_impl::halfpi<double>();
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::operator()(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t sinRounded(float_t phase) const noexcept
-	{
-		phase = phase - math_impl::halfpi<float_t>();
+		phase = phase - math_impl::halfpi<index_t>();
 		phase = mspWrap(phase * inv_two_pi) * two_pi;
 		return Base::rounded(phase);
 	}
 	[[nodiscard]]
-	constexpr float sinRounded(double phase) const noexcept
+	constexpr sample_t sinLinear(index_t phase) const noexcept
 	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = phase - math_impl::halfpi<float_t>();
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::rounded(phase);
-	}
-	[[nodiscard]]
-	constexpr float_t sinLinear(float_t phase) const noexcept
-	{
-		phase = phase - math_impl::halfpi<float_t>();
-		phase = mspWrap(phase * inv_two_pi) * two_pi;
-		return Base::linear(phase);
-	}
-	[[nodiscard]]
-	constexpr float sinLinear(double phase) const noexcept
-	{
-		if constexpr (!std::is_same_v<float_t, float>) {
-			static_assert(std::is_same_v<float_t, float>, "This function should only be used when the table is single precision, but we want to index with double-precision.");
-			return 0.f;
-		}
-		phase = phase - math_impl::halfpi<float_t>();
+		phase = phase - math_impl::halfpi<index_t>();
 		phase = mspWrap(phase * inv_two_pi) * two_pi;
 		return Base::linear(phase);
 	}
 };
 
-#if false // not even slightly tested yet
-// unified trig tables with concepts for type safety
-template<FloatingPoint T = float, size_t Resolution = 65536>
-requires PowerOfTwo<Resolution>
-class TrigTables {
-private:
-	static constexpr T two_pi = math_impl::two_pi<T>();
-	static constexpr T pi = math_impl::pi<T>();
-	static constexpr size_t mask = Resolution - 1;
+struct TanRange {
+	constexpr static double min {0.0};
+	constexpr static double max {math_impl::pi<double>()};
+};
+template<typename sample_t, typename index_t, size_t Resolution, InterpolationType DefaultInterpType>
+class TanTable final : public LookupTableBase<TanTable<sample_t, index_t, Resolution, DefaultInterpType>,
+	sample_t, index_t, TanRange, Resolution,
+	IndexBoundaryPolicy::Wrap, DefaultInterpType>
+{
+	using Base = LookupTableBase<TanTable, sample_t, index_t, TanRange, Resolution,
+		IndexBoundaryPolicy::Wrap, DefaultInterpType>;
+	static_assert(std::is_same_v<typename Base::value_type, sample_t>);
+	static_assert(std::is_same_v<typename Base::index_type, index_t>);
 
-	// Structure of Arrays for better cache performance
-	alignas(64) std::array<T, Resolution> sin_table_{};
-	alignas(64) std::array<T, Resolution> cos_table_{};
-	alignas(64) std::array<T, Resolution> tan_table_{};
-	alignas(64) std::array<T, Resolution> tanh_table_{};
+	static constexpr double pi { math_impl::pi<double>() };
+	static constexpr double inv_pi { 1.0 / math_impl::pi<double>() };
 
 public:
-	constexpr TrigTables() noexcept {
-		// Initialize all tables in one pass for better cache usage
+	static constexpr size_t mask = Resolution - 1; // For power-of-2 wraparound
+	constexpr TanTable() noexcept
+	{
+		const double increment = Base::max_x / static_cast<double>(Resolution);
+
 		for (size_t i = 0; i < Resolution; ++i) {
-			const T phase = (static_cast<T>(i) / static_cast<T>(Resolution)) * two_pi;
-			const T half_phase = phase * T{0.5}; // For tan table (0 to π)
-
-			sin_table_[i] = math_impl::sin(phase);
-			cos_table_[i] = math_impl::cos(phase);
-			tan_table_[i] = math_impl::tan(half_phase);
-
-			// tanh mapping: i ∈ [0, Resolution) → x ∈ [-12, 12)
-			const T tanh_input = T{24} * (static_cast<T>(i) / static_cast<T>(Resolution)) - T{12};
-			tanh_table_[i] = math_impl::tanh(tanh_input);
+			const double phase = static_cast<double>(i) * increment;
+			this->values_[i] = static_cast<sample_t>(math_impl::tan(phase));
 		}
 	}
+	~TanTable() override = default;
 
-	// Unipolar sine lookup [0,1] → [0,2π]
-	constexpr T sin_unipolar(T x) const noexcept {
-		const T clamped = clamp(x, T{0}, T{1});
-		const auto index = static_cast<size_t>(clamped * Resolution) & mask;
-		return sin_table_[index];
+	[[nodiscard]]
+	constexpr sample_t operator()(index_t phase) const noexcept override
+	{
+		// phase = Base::constrainIndexByReso(phase);
+		phase = mspWrap(phase * inv_pi) * pi;
+		return Base::operator()(phase);
 	}
-
-	// Bipolar sine lookup [-1,1] → [-π,π]
-	constexpr T sin_bipolar(T x) const noexcept {
-		const T wrapped = wrap(x, T{-1}, T{1});
-		const T normalized = (wrapped + 1) * 0.5; // Convert to [0,1]
-		return sin_unipolar(normalized);
+	[[nodiscard]]
+	constexpr sample_t rounded(index_t phase) const noexcept override
+	{
+		phase = mspWrap(phase * inv_pi) * pi;
+		return Base::rounded(phase);
 	}
-
-	// Similar methods for cos
-	constexpr T cos_unipolar(T x) const noexcept {
-		const T clamped = clamp(x, T{0}, T{1});
-		const auto index = static_cast<size_t>(clamped * Resolution) & mask;
-		return cos_table_[index];
-	}
-
-	constexpr T cos_bipolar(T x) const noexcept {
-		const T wrapped = wrap(x, T{-1}, T{1});
-		const T normalized = (wrapped + 1) * 0.5;
-		return cos_unipolar(normalized);
-	}
-
-	// Tan lookup [0,1] → [0,π]
-	constexpr T tan_lookup(T x) const noexcept {
-		const T clamped = clamp(x, T{0}, T{1});
-		const auto index = static_cast<size_t>(clamped * Resolution) & mask;
-		return tan_table_[index];
-	}
-
-	// Tanh lookup [-12,12]
-	constexpr T tanh_lookup(T x) const noexcept {
-		const T clamped = clamp(x, T{-12}, T{12});
-		const T normalized = (clamped + 12) / 24; // Convert to [0,1]
-		const auto index = static_cast<size_t>(normalized * Resolution) & mask;
-		return tanh_table_[index];
-	}
-
-	// Interpolated versions for higher quality
-	constexpr T sin_unipolar_interp(T x) const noexcept {
-		const T clamped = clamp(x, T{0}, T{1});
-		return interpolated_lookup(sin_table_, clamped);
-	}
-
-	constexpr T cos_unipolar_interp(T x) const noexcept {
-		const T clamped = clamp(x, T{0}, T{1});
-		return interpolated_lookup(cos_table_, clamped);
-	}
-
-	constexpr T tanh_lookup_interp(T x) const noexcept {
-		const T clamped = clamp(x, T{-12}, T{12});
-		const T normalized = (clamped + 12) / 24;
-		return interpolated_lookup(tanh_table_, normalized);
-	}
-
-	// Access to raw tables if needed for advanced use cases
-	constexpr const std::array<T, Resolution>& sin_data() const noexcept { return sin_table_; }
-	constexpr const std::array<T, Resolution>& cos_data() const noexcept { return cos_table_; }
-	constexpr const std::array<T, Resolution>& tan_data() const noexcept { return tan_table_; }
-	constexpr const std::array<T, Resolution>& tanh_data() const noexcept { return tanh_table_; }
-
-private:
-	constexpr T interpolated_lookup(const std::array<T, Resolution>& table, T normalized_x) const noexcept {
-		const T scaled_index = normalized_x * static_cast<T>(Resolution);
-		const auto rounded_index = nvs::memoryless::round(scaled_index) & mask;
-		const auto ceil_index = (rounded_index + 1) & mask;
-		const T frac = scaled_index - static_cast<T>(rounded_index);
-
-		return linterp(table[rounded_index], table[ceil_index], frac);
+	[[nodiscard]]
+	inline constexpr sample_t linear(index_t phase) const noexcept override
+	{
+		phase = mspWrap(phase * inv_pi) * pi;
+		return Base::linear(phase);
 	}
 };
-#endif
 
 template<FloatingPoint T>
 T padeSin(T x)

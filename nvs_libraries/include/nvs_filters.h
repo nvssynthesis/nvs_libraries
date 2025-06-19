@@ -61,9 +61,8 @@ private:
 	nvs::memoryless::TrigTables<float_t> trig;
 	float_t _fs_inv;
 };
-
-static memoryless::SinTable<float, 16384> sinTable_f;
-static memoryless::SinTable<double, 16384> sinTable_d;
+static memoryless::CosTable<float, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_f;
+static memoryless::CosTable<double, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_d;
 
 //==================================================================================
 

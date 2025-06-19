@@ -227,7 +227,7 @@ TEST_CASE("ExpTable - Basic Properties", "[lookup][exp]") {
 
     REQUIRE(resolution > 0);
 
-    ExpTable<float, IRange<min_val, max_val>, resolution, InterpolationType::Rounded>  const exp_table;
+    ExpTable<float, double, IRange<min_val, max_val>, resolution, InterpolationType::Rounded>  const exp_table;
 
     // SECTION("Table properties") {
     //     REQUIRE(exp_table.min_val == min_val);
@@ -266,7 +266,7 @@ TEST_CASE("ExpTable - Accuracy Tests", "[lookup][exp][accuracy]") {
     constexpr int max_val = 3;
     constexpr size_t resolution = 1024;
 
-    ExpTable<float, IRange<min_val, max_val>, resolution, InterpolationType::Rounded> const exp_table;
+    ExpTable<float, double, IRange<min_val, max_val>, resolution, InterpolationType::Rounded> const exp_table;
 
     SECTION("Non-interpolated accuracy (absolute tolerance)") {
         test_accuracy(exp_table, [](float x) { return std::exp(x); }, min_val, max_val, 0.08);
@@ -300,6 +300,112 @@ TEST_CASE("ExpTable - Accuracy Tests", "[lookup][exp][accuracy]") {
         }
     }
 }
+
+
+TEST_CASE("TanhTable - Accuracy Tests", "[lookup][tanh][accuracy]") {
+    constexpr int min_val = -3;
+    constexpr int max_val = 3;
+    constexpr size_t resolution = 4096;
+
+    TanhTable<float, double, IRange<min_val, max_val>, resolution, InterpolationType::Rounded> const tanh_table;
+
+    SECTION("Non-interpolated accuracy (absolute tolerance)") {
+        test_accuracy(tanh_table, [](float x) { return std::tanh(x); }, min_val, max_val, 0.08);
+    }
+    SECTION("Non-interpolated relative accuracy") {
+        test_relative_accuracy(tanh_table, [](float x) { return std::tanh(x); },
+                              static_cast<float>(min_val), static_cast<float>(max_val), 0.009);
+    }
+
+    SECTION("Interpolated accuracy (absolute tolerance)") {
+        test_interpolated_accuracy(tanh_table, [](float x) { return std::tanh(x); },
+                                  static_cast<float>(min_val), static_cast<float>(max_val), 1e-6);
+    }
+
+    SECTION("Interpolated relative accuracy") {
+        test_interpolated_relative_accuracy(tanh_table, [](float x) { return std::tanh(x); },
+                                           static_cast<float>(min_val), static_cast<float>(max_val), 5e-4);
+    }
+
+    SECTION("Monotonicity") {
+        // Exponential function should be strictly increasing
+        constexpr int num_points = 50;
+        const float step = (max_val - min_val) / static_cast<float>(num_points - 1);
+
+        float prev_value = tanh_table(static_cast<float>(min_val));
+        for (int i = 1; i < num_points; ++i) {
+            const float x = min_val + i * step;
+            const float current_value = tanh_table(x);
+            REQUIRE(current_value > prev_value);
+            prev_value = current_value;
+        }
+    }
+}
+
+TEST_CASE("AtanTable - Accuracy Tests", "[lookup][atan][accuracy]") {
+    constexpr int min_val = -10;
+    constexpr int max_val = 10;
+    constexpr size_t resolution = 16384;    // 128 kB
+
+    AtanTable<float, double, IRange<min_val, max_val>, resolution, InterpolationType::Rounded> const atan_table;
+
+    SECTION("Non-interpolated accuracy (absolute tolerance)") {
+        test_accuracy(atan_table, [](float x) { return std::atan(x); }, min_val, max_val, 0.08);
+    }
+    SECTION("Non-interpolated relative accuracy") {
+        test_relative_accuracy(atan_table, [](float x) { return std::atan(x); },
+                              static_cast<float>(min_val), static_cast<float>(max_val), 0.006);
+    }
+
+    SECTION("Interpolated accuracy (absolute tolerance)") {
+        test_interpolated_accuracy(atan_table, [](float x) { return std::atan(x); },
+                                  static_cast<float>(min_val), static_cast<float>(max_val), 1e-6);
+    }
+
+    SECTION("Interpolated relative accuracy") {
+        test_interpolated_relative_accuracy(atan_table, [](float x) { return std::atan(x); },
+                                           static_cast<float>(min_val), static_cast<float>(max_val), 1e-4);
+    }
+
+    SECTION("Monotonicity") {
+        // Exponential function should be strictly increasing
+        constexpr int num_points = 50;
+        const float step = (max_val - min_val) / static_cast<float>(num_points - 1);
+
+        float prev_value = atan_table(static_cast<float>(min_val));
+        for (int i = 1; i < num_points; ++i) {
+            const float x = min_val + i * step;
+            const float current_value = atan_table(x);
+            REQUIRE(current_value > prev_value);
+            prev_value = current_value;
+        }
+    }
+}
+TEST_CASE("TanTable - Accuracy Tests", "[lookup][tan][accuracy]") {
+    constexpr int min_val = -1;
+    constexpr int max_val = 3;
+    constexpr size_t resolution = 131072;    // 512 kB
+
+    TanTable<float, double, resolution, InterpolationType::Rounded> const tan_table;
+
+    SECTION("Non-interpolated accuracy (absolute tolerance)") {
+        test_accuracy(tan_table, [](float x) { return std::tan(x); }, min_val, max_val, 0.08);
+    }
+    SECTION("Non-interpolated relative accuracy") {
+        test_relative_accuracy(tan_table, [](float x) { return std::tan(x); },
+                              static_cast<float>(min_val), static_cast<float>(max_val), 5e-3);
+    }
+
+    SECTION("Interpolated accuracy (absolute tolerance)") {
+        test_interpolated_accuracy(tan_table, [](float x) { return std::tan(x); },
+                                  static_cast<float>(min_val), static_cast<float>(max_val), 1e-8);
+    }
+
+    SECTION("Interpolated relative accuracy") {
+        test_interpolated_relative_accuracy(tan_table, [](float x) { return std::tan(x); },
+                                           static_cast<float>(min_val), static_cast<float>(max_val), 5e-6);
+    }
+}
 TEST_CASE("CosSinTable - Wraparound Behavior", "[lookup][sin][cos][wraparound]") {
     constexpr auto min_val = 0.f;
     constexpr auto twopi = math_impl::two_pi<double>();
@@ -307,7 +413,7 @@ TEST_CASE("CosSinTable - Wraparound Behavior", "[lookup][sin][cos][wraparound]")
     constexpr auto max_val = twopi;
     constexpr size_t resolution = 1024;
 
-    CosTable<float, resolution, InterpolationType::Rounded> const cos_sin_table;
+    CosTable<float, double, resolution, InterpolationType::Rounded> const cos_sin_table;
 
     SECTION("CosSinTable - Wraparound Behavior - Random Offsets") {
         auto const phi = GENERATE(take(50, Catch::Generators::random(0.0, twopi)));
@@ -352,9 +458,9 @@ TEST_CASE("SinCosTable - Accuracy Tests", "[lookup][sin][cos][accuracy]") {
     auto max_val = math_impl::two_pi<float>();
     constexpr size_t resolution = 16384;
 
-    CosTable<float, resolution, InterpolationType::Rounded> const cos_sin_table;
+    CosTable<float, double, resolution, InterpolationType::Rounded> const cos_sin_table;
 
-    static_assert(std::is_convertible_v<CosTable<float, 16384, InterpolationType::Rounded>::value_type, decltype(min_val)>);
+    static_assert(std::is_convertible_v<CosTable<float, double, 16384, InterpolationType::Rounded>::value_type, decltype(min_val)>);
 
     SECTION("Key points") {
         REQUIRE(cos_sin_table.sin(-M_PI) == Approx(std::sin(-M_PI)).margin(0.00001));

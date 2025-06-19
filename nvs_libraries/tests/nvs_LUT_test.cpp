@@ -497,18 +497,18 @@ TEST_CASE("SinCosTable - Accuracy Tests", "[lookup][sin][cos][accuracy]") {
     }
 }
 
-//
-// #if USING_SPROUT
-// TEST_CASE("Constexpr Construction", "[lookup][constexpr]") {
-//     SECTION("ExpTable constexpr construction") {
-//         constexpr ExpTable<-2, 2, float, 256> exp_table{};
-//         static_assert(exp_table.size == 256);
-//         static_assert(exp_table.min_val == -2);
-//         static_assert(exp_table.max_val == 2);
-//
-//         // Test that we can use it in constexpr context
-//         constexpr auto result = exp_table(1.0f);
-//         REQUIRE(result == Approx(std::exp(1.0f)).margin(0.1));
-//     }
-// }
-// #endif
+#if USING_SPROUT
+TEST_CASE("Constexpr Construction", "[lookup][constexpr]") {
+    SECTION("ExpTable constexpr construction") {
+        ExpTable<float, double, IRange<-3, 3>, 256, InterpolationType::Rounded>  constexpr exp_table;
+
+        static_assert(exp_table.size == 256);
+        static_assert(exp_table.min_x == -3);
+        static_assert(exp_table.max_x == 3);
+
+        // Test that we can use it in constexpr context
+        constexpr auto result = exp_table(1.0f);
+        REQUIRE(result == Approx(std::exp(1.0f)).margin(0.1));
+    }
+}
+#endif

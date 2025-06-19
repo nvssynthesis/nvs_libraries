@@ -124,19 +124,19 @@ constexpr T linterp(T a, T b, T t) noexcept {
 
 // unipolar to bipolar (assuming input is [0..1]
 template<FloatingPoint T>
-T unibi(T x) noexcept {
+constexpr T unibi(T x) noexcept {
 	assert ((0.f <= x) && (x <= 1.f));
     return (x * 2.f) - 1.f;
 }
 // bipolar to unipolar (assuming input is [-1..1]
 template<FloatingPoint T>
-T biuni(T x) noexcept {
+constexpr T biuni(T x) noexcept {
 	assert ((-1.f <= x) && (x <= 1.f));
     return (x + 1.f) * 0.5f;
 }
 
 template<FloatingPoint T>
-T clamp1(T x) noexcept {
+constexpr T clamp1(T x) noexcept {
     if (x > 1.f)
         return 1.f;
     else if (x < -1.f)
@@ -147,27 +147,27 @@ T clamp1(T x) noexcept {
 
 template<class T> concept Numeric = std::is_arithmetic_v<T>;
 template<Numeric T>
-T clamp(T x, T min, T max) noexcept {
+constexpr T clamp(T x, T min, T max) noexcept {
 	return (x < min) ? min : ((x > max) ? max : x);
 }
 template<Numeric T>
-T clamp_low(T x, T min) noexcept {
+constexpr T clamp_low(T x, T min) noexcept {
     return (x < min) ? min : x;
 }
 template<Numeric T>
-T clamp_high(T x, T max) noexcept {
+constexpr T clamp_high(T x, T max) noexcept {
     return (x > max) ? max : x;
 }
 
 // based on https://stackoverflow.com/questions/14415753/wrap-value-into-range-min-max-without-division
 template<FloatingPoint T>
-T div_wrap(T x, T xmin, T xmax)
+constexpr T div_wrap(T x, T xmin, T xmax)
 {
     return x - (xmax - xmin) * floor( x / (xmax - xmin));
 }
 
 template<FloatingPoint T>
-T wrap(T x, T xMin, T xMax)
+constexpr T wrap(T x, T xMin, T xMax)
 {
     return (T)fmod((fmod(x - xMin, xMax - xMin) + xMax - xMin) , xMax - xMin) + xMin;
 }
@@ -196,20 +196,20 @@ T unboundSat2(T x) {
 }
 
 template<FloatingPoint T>
-T crush(T input, T depth) noexcept {
+constexpr T crush(T input, T depth) noexcept {
     //T depth = pow(2, exponent);
     T crushed = int(input * depth) / depth;
     return crushed;
 }
 
 template<FloatingPoint T>
-T xOverOnePlusAbsX(T input) noexcept {
+constexpr T xOverOnePlusAbsX(T input) noexcept {
     // y = x/(1 + |x|)
     return input / (1 + (input > 0 ? input : -input));
 }
 
 template<FloatingPoint T>
-T mspWrap(T f) noexcept
+constexpr T mspWrap(T f) noexcept
 {
 	f = (f > std::numeric_limits<int>::max() || f < std::numeric_limits<int>::min()) ? 0. : f;
 	int k = static_cast<int>(f);
@@ -222,11 +222,11 @@ T mspWrap(T f) noexcept
 }
 
 template<FloatingPoint T>
-T scale(T val, T min, T range) noexcept {
+constexpr T scale(T val, T min, T range) noexcept {
 	return (val - min) / range;
 }
 template<FloatingPoint T>
-size_t round(T x) noexcept {
+constexpr size_t round(T x) noexcept {
 	return x >= 0 ? static_cast<size_t>(x + 0.5) : static_cast<size_t>(x - 0.5);
 }
 
@@ -257,6 +257,7 @@ template<typename Derived, typename sample_t, typename index_t, HasRange RangeTy
 requires PowerOfTwo<Resolution> && FloatingPoint<sample_t> && FloatingPoint<index_t>
 class LookupTableBase {
 public:
+	constexpr LookupTableBase() noexcept = default;
 	virtual ~LookupTableBase() = default;
 
 	[[nodiscard]]
@@ -294,6 +295,10 @@ public:
 	using index_type = index_t;         // What you pass in for lookup
 	using size_type = size_t;           // For consistency with STL
 
+	static constexpr double min_x = RangeType::min;
+	static constexpr double max_x = RangeType::max;
+	static constexpr double x_range = max_x - min_x;
+	static constexpr size_t size = Resolution;
 protected:
 	static constexpr auto constrainIndexBy01(std::floating_point auto fpIdx) {
 		if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
@@ -338,9 +343,6 @@ protected:
 		return linterp(rounded_lookup(floored_index), rounded_lookup(next_index), frac);
 	}
 	std::array<sample_t, Resolution> values_{};
-	static constexpr double min_x = RangeType::min;
-	static constexpr double max_x = RangeType::max;
-	static constexpr double x_range = max_x - min_x;
 };
 
 template<std::integral auto Min, std::integral auto Max>

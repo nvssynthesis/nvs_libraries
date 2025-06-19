@@ -30,6 +30,13 @@ target_include_directories(nvs_libraries INTERFACE
 		${CMAKE_CURRENT_SOURCE_DIR}/external/sprout
 )
 
+# Check compiler and add constexpr limits
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+	target_compile_options(nvs_libraries INTERFACE -fconstexpr-ops-limit=10000000)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+	target_compile_options(nvs_libraries INTERFACE -fconstexpr-steps=10000000)
+endif()
+
 enable_testing()
 
 add_executable(nvs_gen_test tests/nvs_gen_test.cpp)

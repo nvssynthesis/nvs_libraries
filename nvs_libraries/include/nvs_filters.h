@@ -58,11 +58,13 @@ struct CutoffToG
 			return 0.f;
 	}
 private:
-	nvs::memoryless::TrigTables<float_t> trig;
 	float_t _fs_inv;
 };
-static memoryless::CosTable<float, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_f;
-static memoryless::CosTable<double, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_d;
+
+static constexpr memoryless::CosTable<float, float, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_f;
+static constexpr memoryless::CosTable<double, double, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_d;
+
+static constexpr nvs::memoryless::TanTable<double, double, 65536, nvs::memoryless::InterpolationType::Linear> tanTable_d;
 
 //==================================================================================
 
@@ -118,7 +120,6 @@ public:
 	virtual float_t operator()(float_t input, float_t cutoff, float_t resonance) = 0;
 	
 protected:
-	nvs::memoryless::TrigTables<float_t> trig;
 	float_t _fs_inv;
 	float_t _cutoffTarget, _resonanceTarget;
 	float_t _w_c, _q;

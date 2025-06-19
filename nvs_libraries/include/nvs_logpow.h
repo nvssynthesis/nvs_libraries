@@ -20,6 +20,7 @@
 */
 namespace nvs {
     template <typename T>
+    [[deprecated]]
     class abstractBaseTable {
     public:
         abstractBaseTable(T x_min = 0.0, T x_range = 1.0, size_t _N = 8192)

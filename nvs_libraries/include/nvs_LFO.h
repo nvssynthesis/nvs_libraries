@@ -50,7 +50,6 @@ public:
 private:
 	T sampleRate, fs_inv;
 	T _phase, _lastPhase;
-	const nvs::memoryless::TrigTables<T> shapes;
 };
 } // namespace lfo
 } // namespace nvs
@@ -102,8 +101,15 @@ T simple_lfo<T>::tri() const {
 template<typename T>
 T simple_lfo<T>::sine() const {
 	using namespace nvs::memoryless;
-	T sinewave = shapes.cos_unipolar_interp(_phase);
-	return sinewave;
+//	T sinewave = shapes.cos_unipolar_interp(_phase);
+	if constexpr (std::is_same_v<T, float>){
+		return cosTable_f(_phase * 2.f * math_impl::two_pi<T>());
+	}
+	else if constexpr (std::is_same_v<T, double>){
+		return cosTable_d(_phase * 2.f * math_impl::two_pi<T>());
+	}
+	assert(false);
+	return 0.f;
 }
 template<typename T>
 T inline simple_lfo<T>::phasor_offset(T offset) const {

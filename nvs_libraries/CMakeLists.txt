@@ -24,7 +24,10 @@ include_directories(
 		external/sprout
 )
 
-add_library(nvs_libraries INTERFACE)
+add_library(
+		nvs_libraries
+		src/lookup_tables.cpp
+)
 target_include_directories(nvs_libraries INTERFACE
 		${CMAKE_CURRENT_SOURCE_DIR}/include
 		${CMAKE_CURRENT_SOURCE_DIR}/external/sprout

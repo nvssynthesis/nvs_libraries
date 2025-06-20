@@ -499,16 +499,64 @@ TEST_CASE("SinCosTable - Accuracy Tests", "[lookup][sin][cos][accuracy]") {
 
 #if USING_SPROUT
 TEST_CASE("Constexpr Construction", "[lookup][constexpr]") {
+    constexpr size_t resolution = 64;
     SECTION("ExpTable constexpr construction") {
-        ExpTable<float, double, IRange<-3, 3>, 256, InterpolationType::Rounded>  constexpr exp_table;
+        ExpTable<float, double, IRange<-3, 3>, resolution, InterpolationType::Linear>  constexpr table;
 
-        static_assert(exp_table.size == 256);
-        static_assert(exp_table.min_x == -3);
-        static_assert(exp_table.max_x == 3);
+        static_assert(table.size == resolution);
+        static_assert(table.min_x == -3);
+        static_assert(table.max_x == 3);
 
         // Test that we can use it in constexpr context
-        constexpr auto result = exp_table(1.0f);
+        constexpr auto result = table(1.0f);
         REQUIRE(result == Approx(std::exp(1.0f)).margin(0.1));
+    }
+
+    SECTION("CosTable constexpr construction") {
+        CosTable<float, float, resolution, InterpolationType::Linear> constexpr table;
+
+        static_assert(table.size == resolution);
+        static_assert(table.min_x == 0);
+        REQUIRE(table.max_x == Approx(2.0 * M_PI));
+
+        // Test that we can use it in constexpr context
+        constexpr auto result = table(1.0f);
+        REQUIRE(result == Approx(std::cos(1.0f)).margin(0.1));
+    }
+
+    SECTION("TanTable constexpr construction") {
+        TanTable<float, float, resolution, InterpolationType::Linear> constexpr table;
+
+        static_assert(table.size == resolution);
+        static_assert(table.min_x == 0);
+        REQUIRE(table.max_x == Approx(M_PI));
+
+        // Test that we can use it in constexpr context
+        constexpr auto result = table(1.0f);
+        REQUIRE(result == Approx(std::tan(1.0f)).margin(0.1));
+    }
+    SECTION("AtanTable constexpr construction") {
+        AtanTable<float, float, IRange<-10, 10>, resolution, InterpolationType::Linear> constexpr table;
+
+        static_assert(table.size == resolution);
+        static_assert(table.min_x == -10);
+        static_assert(table.max_x == 10);
+
+        // Test that we can use it in constexpr context
+        constexpr auto result = table(1.0f);
+        REQUIRE(result == Approx(std::atan(1.0f)).margin(0.1));
+    }
+
+    SECTION("TanhTable constexpr construction") {
+        TanhTable<float, float, nvs::memoryless::IRange<-10, 10>, resolution, InterpolationType::Linear> constexpr table;
+
+        static_assert(table.size == resolution);
+        static_assert(table.min_x == -10);
+        static_assert(table.max_x == 10);
+
+        // Test that we can use it in constexpr context
+        constexpr auto result = table(1.0f);
+        REQUIRE(result == Approx(std::tanh(1.0f)).margin(0.1));
     }
 }
 #endif

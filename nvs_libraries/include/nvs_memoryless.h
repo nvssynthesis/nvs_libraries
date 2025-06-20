@@ -288,8 +288,25 @@ public:
 	}
 	[[nodiscard]]
 	virtual constexpr sample_t linear(index_t x) const noexcept {
-		const index_t normalized = scale(x, static_cast<index_t>(min_x), static_cast<index_t>(x_range));
-		return interpolated_lookup(normalized);
+		const index_t normalized_index = scale(x, static_cast<index_t>(min_x), static_cast<index_t>(x_range));
+		const index_t coinstrainedNormalizedIndex = constrainIndexBy01(normalized_index);
+		
+		const index_t scaled_index = [normIdx = coinstrainedNormalizedIndex]() {
+			if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
+				return normIdx * static_cast<index_t>(Resolution);
+			}
+			else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
+				return normIdx * static_cast<index_t>(Resolution - 1);
+			}
+		}();
+
+		const auto floored_index = static_cast<size_t>(scaled_index);
+		assert (floored_index < values_.size());
+
+		const sample_t frac = scaled_index - static_cast<sample_t>(floored_index);
+		const auto next_index = constrainIndexByReso(floored_index + 1);
+		
+		return linterp(rounded_lookup(floored_index), rounded_lookup(next_index), frac);
 	}
 	using value_type = sample_t;        // What the table returns
 	using index_type = index_t;         // What you pass in for lookup
@@ -300,12 +317,12 @@ public:
 	static constexpr double x_range = max_x - min_x;
 	static constexpr size_t size = Resolution;
 protected:
-	static constexpr auto constrainIndexBy01(std::floating_point auto fpIdx) {
+	static constexpr index_t constrainIndexBy01(index_t fpIdx) {
 		if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
 			return mspWrap(fpIdx);
 		}
 		else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
-			return clamp1(fpIdx);
+			return clamp(fpIdx, static_cast<index_t>(0.0), static_cast<index_t>(1.0));
 		}
 		else { assert(false); return 0; } //No such boundary policy.
 	}
@@ -322,25 +339,6 @@ protected:
 	constexpr sample_t rounded_lookup(size_t index) const noexcept {
 		assert(index < values_.size());
 		return values_[index];
-	}
-
-	constexpr sample_t interpolated_lookup(index_t normalized_index) const noexcept
-	{
-		const index_t scaled_index = [normalized_index]() {
-			if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Wrap) {
-				return normalized_index * static_cast<index_t>(Resolution);
-			}
-			else if constexpr (BoundaryPolicy == IndexBoundaryPolicy::Clamp) {
-				return normalized_index * static_cast<index_t>(Resolution - 1);
-			}
-		}();
-
-		const auto floored_index = static_cast<size_t>(scaled_index);
-		assert (floored_index < values_.size());
-
-		const sample_t frac = scaled_index - static_cast<sample_t>(floored_index);
-		const auto next_index = constrainIndexByReso(floored_index + 1);
-		return linterp(rounded_lookup(floored_index), rounded_lookup(next_index), frac);
 	}
 	std::array<sample_t, Resolution> values_{};
 };

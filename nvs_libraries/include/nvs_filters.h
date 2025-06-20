@@ -10,8 +10,6 @@
  ***TODO:
 	-optimize tvap:
 		-replace all instances of sin() and cos() with faster versions (pade or lookup table if it remains stable)
-	-free cutoff_to_g(), both because it CAN be free and because not all filters need it
-	-remove #include <iostream>
 **	-remove filter_abstract::z1
 	-make lookup tables static
 	-make lookup tables constexpr (really in nvs_memoryless)
@@ -19,8 +17,8 @@
 
 #pragma once
 #include "nvs_memoryless.h"
+#include "lookup_tables.h"
 #include "nvs_matrix2x2.h"
-#include <iostream>
 #include <array>
 
 #include <concepts>
@@ -49,22 +47,19 @@ struct CutoffToG
 	}
 	float_t operator()(float_t cutoff){
 		using namespace nvs::memoryless;
-		if ((trig.tan_table) != nullptr)
-		{
-			//float_t wc = (2.f*M_PI) * cutoff;
-			return static_cast<float_t>(trig.tan_LUT(cutoff * _fs_inv / 2.0));
+		auto x = cutoff * _fs_inv / 2.0;
+		if constexpr (std::is_same_v<float_t, float>){
+			assert ((tanTable_f.min_x <= x) && (x < tanTable_f.max_x));
+			return tanTable_f(x);
 		}
-		else
-			return 0.f;
+		else if constexpr (std::is_same_v<float_t, double>){
+			assert ((tanTable_d.min_x <= x) && (x < tanTable_d.max_x));
+			return tanTable_d(x);
+		}
 	}
 private:
 	float_t _fs_inv;
 };
-
-static constexpr memoryless::CosTable<float, float, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_f;
-static constexpr memoryless::CosTable<double, double, 16384, nvs::memoryless::InterpolationType::Linear> sinTable_d;
-
-static constexpr nvs::memoryless::TanTable<double, double, 65536, nvs::memoryless::InterpolationType::Linear> tanTable_d;
 
 //==================================================================================
 
@@ -125,6 +120,16 @@ protected:
 	float_t _w_c, _q;
 	float_t _blockSize_inv;
 	mode_e _mode {mode_e::LP};
+	
+	static constexpr float_t _tanh(float_t x){
+		using namespace nvs::memoryless;
+		if constexpr (std::is_same_v<float_t, float>){
+			return tanhTable_f(x);
+		}
+		else if constexpr (std::is_same_v<float_t, double>){
+			return tanhTable_d(x);
+		}
+	}
 };
 template<typename float_t>
 inline filter_abstract<float_t>::~filter_abstract() { }
@@ -608,27 +613,10 @@ template<typename float_t>
 class svf_prototype
 {
 public:
-	using TableT = memoryless::SinTable<float_t, 16384>;
-
-	svf_prototype()
-	  : sinTable([]() -> TableT const& {
-			if constexpr (std::is_same_v<float_t, float>) {
-				return sinTable_f;
-			}
-			else if constexpr (std::is_same_v<float_t, double>) {
-				return sinTable_d;
-			}
-			else {
-				static_assert(always_false<float_t>, "svf_prototype only supports float or double");
-			}
-		}())
-	{}
-	
 	float_t lp() {return _outputs.lp;}
 	float_t bp() {return _outputs.bp;}
 	float_t hp() {return _outputs.hp;}
 	float_t np() {return _outputs.np;}
-	
 protected:
 	struct outputs
 	{
@@ -639,12 +627,20 @@ protected:
 		float_t lp, bp;
 	} _state = { 0.f, 0.f };
 	
-	TableT const &sinTable;
 };
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
 template<typename float_t>
 class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float_t>
 {
+protected:
+	static constexpr float_t sinTable(float_t phase) {
+		if constexpr (std::is_same_v<float_t, float>){
+			return memoryless::cosTable_f.sin(phase);
+		}
+		else if constexpr (std::is_same_v<float_t, double>){
+			return memoryless::cosTable_d.sin(phase);
+		}
+	}
 public:
 	//==============================================================================
 	void clear() override {
@@ -722,6 +718,7 @@ template<typename float_t>
 class svf_nl_rk :   public filter_abstract<float_t>, public svf_prototype<float_t>
 {
 	using base = filter_abstract<float_t>;
+	
 public:
 	svf_nl_rk() {
 		for (int i = 0; i < 2; i++) {
@@ -777,8 +774,8 @@ public:
 		{
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
-			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(this->_state.lp);
+			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
+			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(this->_state.lp);
 
 			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
@@ -786,24 +783,24 @@ public:
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp); // is this the right move?
-			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
+			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp); // is this the right move?
+			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
-			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
+			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
+			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(hp);
-			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->trig.tanh_lookup_interp(tempstate[0]);
+			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
+			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
 
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);

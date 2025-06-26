@@ -83,7 +83,7 @@ T simple_lfo<T>::phasor() {
 	using namespace nvs::memoryless;
 	_lastPhase = _phase;
 	_phase += _freq * fs_inv;
-	_phase = nvs::gen::wrap01(_phase);
+	_phase = nvs::memoryless::mspWrap(_phase);
 	return _phase;
 }
 template<typename T>

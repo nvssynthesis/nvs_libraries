@@ -5,33 +5,39 @@
 
 namespace nvs::memoryless {
 
+#ifdef COS_LUT
 alignas(cache_line_size)
-const memoryless::CosTable<float, float, 16384, nvs::memoryless::InterpolationType::Linear> cosTable_f {};
+const memoryless::CosTable<float, float, COS_SIZE, nvs::memoryless::InterpolationType::Linear> cosTable_f {};
 alignas(cache_line_size)
-const memoryless::CosTable<double, double, 16384, nvs::memoryless::InterpolationType::Linear> cosTable_d {};
+const memoryless::CosTable<double, double, COS_SIZE, nvs::memoryless::InterpolationType::Linear> cosTable_d {};
+#endif	// COS_LUT
 
-// really want 65536
+#ifdef TAN_LUT
 alignas(cache_line_size)
-const nvs::memoryless::TanTable<float, float, 65536, nvs::memoryless::InterpolationType::Linear> tanTable_f {};
+const nvs::memoryless::TanTable<float, float, TAN_SIZE, nvs::memoryless::InterpolationType::Linear> tanTable_f {};
 alignas(cache_line_size)
-const nvs::memoryless::TanTable<double, double, 65536, nvs::memoryless::InterpolationType::Linear> tanTable_d {};
+const nvs::memoryless::TanTable<double, double, TAN_SIZE, nvs::memoryless::InterpolationType::Linear> tanTable_d {};
+#endif	// TAN_LUT
 
-// might be fine this small
+#ifdef TANH_LUT
 alignas(cache_line_size)
-const nvs::memoryless::TanhTable<float, float, IRange<-20, 20>, 16384, nvs::memoryless::InterpolationType::Linear> tanhTable_f {};
+const nvs::memoryless::TanhTable<float, float, IRange<-20, 20>, TANH_SIZE, nvs::memoryless::InterpolationType::Linear> tanhTable_f {};
 alignas(cache_line_size)
-const nvs::memoryless::TanhTable<double, double, IRange<-20, 20>, 16384, nvs::memoryless::InterpolationType::Linear> tanhTable_d {};
+const nvs::memoryless::TanhTable<double, double, IRange<-20, 20>, TANH_SIZE, nvs::memoryless::InterpolationType::Linear> tanhTable_d {};
+#endif	// TANH_LUT
 
-// probably want more like 65536. see if we can get away with more restricted range too.
+#ifdef ATAN_LUT
 alignas(cache_line_size)
-const AtanTable<float, float, IRange<-96, 96>, 65536, InterpolationType::Linear> atanTable_f {};
+const AtanTable<float, float, IRange<-96, 96>, ATAN_SIZE, InterpolationType::Linear> atanTable_f {};
 alignas(cache_line_size)
-const AtanTable<double, double, IRange<-96, 96>, 65536, InterpolationType::Linear> atanTable_d {};
+const AtanTable<double, double, IRange<-96, 96>, ATAN_SIZE, InterpolationType::Linear> atanTable_d {};
+#endif	// ATAN_LUT
 
-// not sure about range or resolution needed.
+#ifdef EXP_LUT
 alignas(cache_line_size)
-const ExpTable<float, float, IRange<-10, 10>, 1024, InterpolationType::Rounded> expTable_f {};
+const ExpTable<float, float, IRange<-10, 10>, EXP_SIZE, InterpolationType::Rounded> expTable_f {};
 alignas(cache_line_size)
-const ExpTable<double, double, IRange<-10, 10>, 1024, InterpolationType::Rounded> expTable_d {};
+const ExpTable<double, double, IRange<-10, 10>, EXP_SIZE, InterpolationType::Rounded> expTable_d {};
+#endif // EXP_LUT
 
 }

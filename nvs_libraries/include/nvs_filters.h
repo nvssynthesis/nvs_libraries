@@ -27,39 +27,21 @@
 namespace nvs	{
 namespace filters {
 
-template<typename float_t>
+template<FloatingPoint float_t>
 float_t cutoff_to_g_inaccurate(float_t cutoff, float_t fs_inv){
 	return cutoff * fs_inv * 0.5f * (float_t)M_PI;
 }
-template<typename float_t>
+template<FloatingPoint float_t>
 float_t cutoff_to_g_slow(float_t cutoff, float_t fs_inv){
-	return tan(cutoff * fs_inv * (float_t)M_PI);
+	return std::tan(cutoff * fs_inv * (float_t)M_PI);
 }
 
-template<typename float_t>
-struct CutoffToG
+template<FloatingPoint float_t>
+float_t cutoff_to_g(float_t cutoff, float_t fs_inv)
 {
-	static_assert(std::is_floating_point<float_t>::value, "CutoffToG type must be floating point");
-
-	void setSampleRate(float_t sr){
-		assert(sr > 0.f);
-		_fs_inv = static_cast<float_t>(1) / sr;
-	}
-	float_t operator()(float_t cutoff){
-		using namespace nvs::memoryless;
-		auto x = cutoff * _fs_inv / 2.0;
-		if constexpr (std::is_same_v<float_t, float>){
-			assert ((tanTable_f.min_x <= x) && (x < tanTable_f.max_x));
-			return tanTable_f(x);
-		}
-		else if constexpr (std::is_same_v<float_t, double>){
-			assert ((tanTable_d.min_x <= x) && (x < tanTable_d.max_x));
-			return tanTable_d(x);
-		}
-	}
-private:
-	float_t _fs_inv;
-};
+	auto x = cutoff * fs_inv / 2.0;
+	return memoryless::math_impl::tan(x);
+}
 
 //==================================================================================
 
@@ -71,7 +53,7 @@ enum class mode_e {
 	NP
 };
 
-template<typename float_t>
+template<FloatingPoint float_t>
 class filter_abstract{
 	static_assert(std::is_floating_point<float_t>::value, "filter_abstract type must be floating point");
 public:
@@ -120,18 +102,8 @@ protected:
 	float_t _w_c, _q;
 	float_t _blockSize_inv;
 	mode_e _mode {mode_e::LP};
-	
-	static constexpr float_t _tanh(float_t x){
-		using namespace nvs::memoryless;
-		if constexpr (std::is_same_v<float_t, float>){
-			return tanhTable_f(x);
-		}
-		else if constexpr (std::is_same_v<float_t, double>){
-			return tanhTable_d(x);
-		}
-	}
 };
-template<typename float_t>
+template<FloatingPoint float_t>
 inline filter_abstract<float_t>::~filter_abstract() { }
 
 /**
@@ -140,7 +112,7 @@ inline filter_abstract<float_t>::~filter_abstract() { }
 	-don't use clamp if unnecessary (and it should be)
  */
 template<
-	typename float_t,
+	FloatingPoint float_t,
 typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
 				{ return cutoff_to_g_slow(f_c, fs); })
 >
@@ -199,7 +171,7 @@ private:
 //==============================================================================
 
 template<
-	typename float_t,
+	FloatingPoint float_t,
 	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
 								{ return cutoff_to_g_slow(f_c, fs);})
 >
@@ -224,7 +196,7 @@ public:
 		auto g = std::invoke(func, this->_w_c, this->_fs_inv);
 		auto x_n = x * g;
 		v_n = x_n + z1;
-		auto y_n = tanh(v_n);
+		auto y_n = memoryless::math_impl::tanh(v_n);
 		z1 = x_n + y_n;
 		return y_n;
 	}
@@ -258,7 +230,7 @@ private:
 	-figure out power loss with non-LP modes
  */
 template<
-	typename float_t,
+	FloatingPoint float_t,
 	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
 							{ return cutoff_to_g_slow(f_c, fs);})
 >
@@ -371,7 +343,7 @@ private:
 	-and also, now in highpass mode, it explodes easily, and when you reload the plugin, it remains silent... in reaper at least...
  */
 template<
-	typename float_t,
+	FloatingPoint float_t,
 	unsigned int N_iters=16,
 	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs) { return cutoff_to_g_slow(f_c, fs);}),
 	class onePole_t=onePole_nonlinear_df2<float_t, CutoffToGCallable>
@@ -448,7 +420,7 @@ public:
 		u_n = y_n;  // initial estimation
 		for (auto n = 0U; n < N_iters; n++){
 			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
-			u_n = input - k * (G * tanh(tmp) + S);
+			u_n = input - k * (G * memoryless::math_impl::tanh(tmp) + S);
 			assert(u_n == u_n);
 			assert(!isinf(u_n));
 		}
@@ -462,7 +434,7 @@ public:
 				 );
 		assert(y_n == y_n);
 		assert(!isinf(y_n));
-//		y_n = tanh(y_n);
+//		y_n = memoryless::math_impl::tanh(y_n);
 		return y_n;
 	}
 	float_t operator()(float_t input) override {
@@ -491,7 +463,7 @@ private:
  TODO:
 *	-replace cutoff_to_g_slow()
  */
-template<typename float_t>
+template<FloatingPoint float_t>
 class butterworth2p :   public filter_abstract<float_t>
 {
 public:
@@ -560,7 +532,7 @@ private:
 };
 
 //==================================================================================
-template<typename float_t>
+template<FloatingPoint float_t>
 class dcBlock   :   public filter_abstract <float_t>
 {
 public:
@@ -609,7 +581,7 @@ template<typename>
 inline constexpr bool always_false = false;
 }
 
-template<typename float_t>
+template<FloatingPoint float_t>
 class svf_prototype
 {
 public:
@@ -629,18 +601,9 @@ protected:
 	
 };
 // linear state variable filter using 'naive' integrators (i.e., Euler backward difference integration)
-template<typename float_t>
+template<FloatingPoint float_t>
 class svf_lin_naive     :   public filter_abstract<float_t>, svf_prototype<float_t>
 {
-protected:
-	static constexpr float_t sinTable(float_t phase) {
-		if constexpr (std::is_same_v<float_t, float>){
-			return memoryless::cosTable_f.sin(phase);
-		}
-		else if constexpr (std::is_same_v<float_t, double>){
-			return memoryless::cosTable_d.sin(phase);
-		}
-	}
 public:
 	//==============================================================================
 	void clear() override {
@@ -655,7 +618,7 @@ public:
 	}
 	void filter(float_t input){
 		float_t c, d;
-		c = 2.f * sinTable((float_t)M_PI * this->_w_c * this->_fs_inv);
+		c = 2.f * memoryless::math_impl::sin((float_t)M_PI * this->_w_c * this->_fs_inv);
 		d = 2.f * (1.f - pow(this->_q, 0.25f));
 
 		if (c > 0.5f) c = 0.5f;
@@ -714,7 +677,7 @@ public:
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
  */
-template<typename float_t>
+template<FloatingPoint float_t>
 class svf_nl_rk :   public filter_abstract<float_t>, public svf_prototype<float_t>
 {
 	using base = filter_abstract<float_t>;
@@ -774,8 +737,8 @@ public:
 		{
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
-			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(this->_state.lp);
+			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
+			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(this->_state.lp);
 
 			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
@@ -783,24 +746,24 @@ public:
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp); // is this the right move?
-			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
+			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp); // is this the right move?
+			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
-			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
+			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
+			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(hp);
-			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * this->_tanh(tempstate[0]);
+			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
+			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
@@ -848,7 +811,7 @@ private:
 /*
  time-variant allpass filter
  */
-template<typename float_t>
+template<FloatingPoint float_t>
 class tvap  :   public filter_abstract<float_t>
 {
 public:
@@ -930,9 +893,9 @@ public:
 		_r2 = f_pi2r2(f_pi);
 
 		_cr1 = cos(_r1);
-		_sr1 = sinTable(_r1);
+		_sr1 = memoryless::math_impl::sin(_r1);
 		_cr2 = cos(_r2);
-		_sr2 = sinTable(_r2);
+		_sr2 = memoryless::math_impl::sin(_r2);
 		//tmp[0] = _x_n;
 		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
 		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
@@ -983,9 +946,9 @@ public:
 		_r2 = f_pi2r2(_f_pi_n);
 
 		_cr1 = cos(_r1);
-		_sr1 = sinTable(_r1);
+		_sr1 = memoryless::math_impl::sin(_r1);
 		_cr2 = cos(_r2);
-		_sr2 = sinTable(_r2);
+		_sr2 = memoryless::math_impl::sin(_r2);
 		//tmp[0] = _x_n;
 		tmp[1] = _cr2 * state.z1 - _sr2 * state.z2;
 		//tmp[2] = _sr2 * _z1 + _cr2 * _z2;
@@ -1033,7 +996,7 @@ private:
 };
 //===============================================================================
 // PIRKLE IMPLEMENTATIONS (not my own work; used only for checking.)
-template<typename float_t>
+template<FloatingPoint float_t>
 class CTPTMoogFilterStage
 {
 public:
@@ -1073,7 +1036,7 @@ public:
 		return z1;
 	}
 };
-template <typename float_t>
+template <FloatingPoint float_t>
 class CTPTMoogLadderFilter
 {
 //public:
@@ -1135,7 +1098,7 @@ public:
 };
 
 //==============================================================================
-template<typename float_t>
+template<FloatingPoint float_t>
 class slewlim
 {
 public:

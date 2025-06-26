@@ -101,15 +101,7 @@ T simple_lfo<T>::tri() const {
 template<typename T>
 T simple_lfo<T>::sine() const {
 	using namespace nvs::memoryless;
-//	T sinewave = shapes.cos_unipolar_interp(_phase);
-	if constexpr (std::is_same_v<T, float>){
-		return cosTable_f(_phase * 2.f * math_impl::two_pi<T>());
-	}
-	else if constexpr (std::is_same_v<T, double>){
-		return cosTable_d(_phase * 2.f * math_impl::two_pi<T>());
-	}
-	assert(false);
-	return 0.f;
+	return math_impl::cos(_phase * 2.f * math_impl::two_pi<T>());
 }
 template<typename T>
 T inline simple_lfo<T>::phasor_offset(T offset) const {

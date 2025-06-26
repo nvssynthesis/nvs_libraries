@@ -18,6 +18,7 @@
 #pragma once
 #include "nvs_memoryless.h"
 #include "lookup_tables.h"
+#include "nvs_fast_math_impl.h"
 #include "nvs_matrix2x2.h"
 #include <array>
 
@@ -111,11 +112,7 @@ inline filter_abstract<float_t>::~filter_abstract() { }
 **	-get rid of y_n as stored value
 	-don't use clamp if unnecessary (and it should be)
  */
-template<
-	FloatingPoint float_t,
-typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
-				{ return cutoff_to_g_slow(f_c, fs); })
->
+template<FloatingPoint float_t>
 class onePole   :   public filter_abstract<float_t>
 {
 public:
@@ -128,8 +125,8 @@ public:
 	virtual void updateResonance() override {}
 	//==============================================================================
 	
-	float_t tpt_lp(float_t x, CutoffToGCallable func){
-		auto const g = std::invoke(func, this->_w_c, this->_fs_inv);
+	float_t tpt_lp(float_t x){
+		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
 		auto const G = g / (1.f + g);
 		v_n = (x - this->z1) * G;
 		y_n = v_n + this->z1;
@@ -144,7 +141,7 @@ public:
 	}
 	//==============================================================================
 	float_t operator()(float_t input) override {
-		auto lp = tpt_lp(input, {});
+		auto lp = tpt_lp(input);
 		
 		if (this->_mode == mode_e::LP)
 			return lp;
@@ -170,11 +167,7 @@ private:
 };
 //==============================================================================
 
-template<
-	FloatingPoint float_t,
-	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
-								{ return cutoff_to_g_slow(f_c, fs);})
->
+template<FloatingPoint float_t>
 class onePole_nonlinear_df2   :   public filter_abstract<float_t>
 {
 public:
@@ -192,8 +185,8 @@ public:
 			this->_mode = mode_e::HP;
 	}
 	//=========================================================================
-	float_t tpt_lp(float_t x, CutoffToGCallable func){
-		auto g = std::invoke(func, this->_w_c, this->_fs_inv);
+	float_t tpt_lp(float_t x){
+		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
 		auto x_n = x * g;
 		v_n = x_n + z1;
 		auto y_n = memoryless::math_impl::tanh(v_n);
@@ -229,11 +222,7 @@ private:
  TODO:
 	-figure out power loss with non-LP modes
  */
-template<
-	FloatingPoint float_t,
-	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs)
-							{ return cutoff_to_g_slow(f_c, fs);})
->
+template<FloatingPoint float_t>
 class fourPole_LP_linear    :   public filter_abstract<float_t>
 {
 public:
@@ -289,8 +278,8 @@ public:
 			_poles[3].setMode(mode_e::HP);
 		}
 	}
-	float_t tpt_fourpole(float_t x, CutoffToGCallable func){
-		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
+	float_t tpt_fourpole(float_t x){
+		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
 		float_t const g2 = g*g;
 		float_t const G = g2 * g2;
 		float_t const s1 = _poles[0].getState();
@@ -333,7 +322,7 @@ public:
 		return operator()(input, cutoff);
 	}
 private:
-	std::array<onePole<float_t, CutoffToGCallable>, 4> _poles;
+	std::array<onePole<float_t>, 4> _poles;
 };
 
 // so far quite tame, since the only nonlinearity is in the feedback path. 
@@ -345,8 +334,7 @@ private:
 template<
 	FloatingPoint float_t,
 	unsigned int N_iters=16,
-	typename CutoffToGCallable=decltype([](float_t f_c, float_t fs) { return cutoff_to_g_slow(f_c, fs);}),
-	class onePole_t=onePole_nonlinear_df2<float_t, CutoffToGCallable>
+	class onePole_t=onePole_nonlinear_df2<float_t>
 >
 class fourPole_LP_nonlinear    :   public filter_abstract<float_t>
 {
@@ -404,8 +392,8 @@ public:
 		}
 	}
 	
-	float_t tpt_fourpole(float_t input, CutoffToGCallable func){
-		float_t const g = std::invoke(func, this->_w_c, this->_fs_inv);
+	float_t tpt_fourpole(float_t input){
+		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
 		float_t const g2 = g*g;
 		float_t const G = g2 * g2;
 		float_t const s1 = _poles[0].getState();
@@ -458,11 +446,6 @@ private:
 	float_t u_n, y_n;
 };
 
-
-/**
- TODO:
-*	-replace cutoff_to_g_slow()
- */
 template<FloatingPoint float_t>
 class butterworth2p :   public filter_abstract<float_t>
 {
@@ -489,7 +472,7 @@ public:
 	virtual void setMode(mode_e) override {}
 	
 	void calcCoefs(const float_t cutoff){
-		const float_t omega = cutoff_to_g_slow(cutoff, this->_fs_inv);
+		const float_t omega = cutoff_to_g(cutoff, this->_fs_inv);
 		const float_t omega2 = omega * omega;
 		const float_t twoCosPiOver4xOmega = (float_t)1.414213562373095 * omega;
 		const float_t c = 1.f + twoCosPiOver4xOmega + omega2;

@@ -224,8 +224,8 @@ constexpr T mspWrap(T f) noexcept
 }
 
 template<FloatingPoint T>
-constexpr T scale(T val, T min, T range) noexcept {
-	return (val - min) / range;
+constexpr T scale(T val, T in_min, T in_range, T out_min=0.0, T out_range=1.0) noexcept {
+	return out_min + ((val - in_min) / in_range) * out_range;
 }
 template<FloatingPoint T>
 constexpr size_t round(T x) noexcept {
@@ -558,7 +558,14 @@ public:
 template<FloatingPoint T>
 T padeSin(T x)
 {
-	assert ((-M_PI <= x) && (x <= M_PI));
+	auto constexpr pi = math_impl::pi<T>();
+	auto constexpr twopi = math_impl::two_pi<T>();
+	
+	x = scale(x, -pi, twopi, (T)0.0, (T)1.0);
+	x = mspWrap(x);
+	x = scale(x, (T)0.0, (T)1.0, -pi, twopi);
+	assert ((-pi <= x) && (x <= pi));
+
 	T xx = x*x;
 	T x3 = xx * x;
 	T x5 = x3 * xx;
@@ -569,7 +576,14 @@ T padeSin(T x)
 template <FloatingPoint T>
 T padeCos(T x)
 {
-	assert ((-M_PI <= x) && (x <= M_PI));
+	auto constexpr pi = math_impl::pi<T>();
+	auto constexpr twopi = math_impl::two_pi<T>();
+	
+	x = scale(x, -pi, twopi, (T)0.0, (T)1.0);
+	x = mspWrap(x);
+	x = scale(x, (T)0.0, (T)1.0, -pi, twopi);
+	assert ((-pi <= x) && (x <= pi));
+	
 	T xx = x * x;
 	T x4 = xx * xx;
 	T num = (313.f * x4)/15120.f - (115.f * xx)/252.f + 1.f;

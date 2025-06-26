@@ -49,7 +49,7 @@ public:
 	T _freq {0.0};
 private:
 	T sampleRate, fs_inv;
-	T _phase, _lastPhase;
+	T _phase{}, _lastPhase{};
 };
 } // namespace lfo
 } // namespace nvs

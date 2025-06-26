@@ -200,6 +200,10 @@ T unboundSat2(T x) {
 template<FloatingPoint T>
 constexpr T crush(T input, T depth) noexcept {
 	//T depth = pow(2, exponent);
+	assert (depth > 0.0);
+	assert (depth == depth);	// was getting NaN error coming in, trying to catch it
+	assert (input == input);
+	
 	T crushed = int(input * depth) / depth;
 	return crushed;
 }

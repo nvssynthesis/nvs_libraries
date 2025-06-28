@@ -660,6 +660,11 @@ public:
  k_3 = h*f(t_n + h/2, y_n + k_2/2)
  k_4 = h*f(t_n + h, y_n + k_3)
  */
+enum class character_e {
+	correct = 0,
+	wrong = 1
+};
+
 template<FloatingPoint float_t>
 class svf_nl_rk :   public filter_abstract<float_t>, public svf_prototype<float_t>
 {
@@ -710,43 +715,94 @@ public:
 		}
 		this->_mode = mode;
 	}
+	void setCharacter(character_e character) {
+		assert ((character == character_e::wrong) || (character == character_e::correct));
+		_character = character;
+	}
 	void filter(float_t input){
 		using namespace nvs::memoryless;
 		float_t hp(0), np(0);
 		// overwritten states. [0] is bp, [1] is lp.
 		float_t tempstate[2];
 
+		auto constexpr twopi = math_impl::two_pi<float_t>();
+		
+		for (unsigned iter = 0; iter < _oversample_factor; iter++) {
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+			deriv1[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
+			deriv1[1] = _h * twopi * this->_w_c * math_impl::tanh(this->_state.bp);
+			tempstate[0] = this->_state.bp + deriv1[0] / 2;
+			tempstate[1] = this->_state.lp + deriv1[1] / 2;
+			
+			np = input - 2 * _resInv * tempstate[0];
+			hp = np - tempstate[1];
+			deriv2[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
+			deriv2[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
+			tempstate[0] = this->_state.bp + deriv2[0] / 2;
+			tempstate[1] = this->_state.lp + deriv2[1] / 2;
+			
+			np = input - 2 * _resInv * tempstate[0];
+			hp = np - tempstate[1];
+			deriv3[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
+			deriv3[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
+			tempstate[0] = this->_state.bp + deriv3[0];
+			tempstate[1] = this->_state.lp + deriv3[1];
+			
+			np = input - 2 * _resInv * tempstate[0];
+			hp = np - tempstate[1];
+			deriv4[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
+			deriv4[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
+			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
+			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
+			
+			np = input - 2 * _resInv * this->_state.bp;
+			hp = np - this->_state.lp;
+		}
+		this->_outputs.bp = this->_state.bp;
+		this->_outputs.lp = this->_state.lp;
+		this->_outputs.hp = hp;
+		this->_outputs.np = np;
+	}
+	void filter_wrong(float_t input){
+		/*
+		 this version made some mistakes (not updating hp and notch at each stage),
+		 but led to a very unique chaotic character, so i keep it as an option.
+		 */
+		using namespace nvs::memoryless;
+		float_t hp(0), np(0);
+		// overwritten states. [0] is bp, [1] is lp.
+		float_t tempstate[2];
+		
+		auto constexpr twopi = math_impl::two_pi<float_t>();
+
 		for (unsigned iter = 0; iter < _oversample_factor; iter++)
 		{
 			np = input - 2 * _resInv * this->_state.bp;
 			hp = np - this->_state.lp;
-			deriv1[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
-			deriv1[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(this->_state.lp);
+			
+			auto const hp_for_deriv = math_impl::tanh(hp);
+			
+			deriv1[0] = _h * twopi * this->_w_c * hp_for_deriv;
+			deriv1[1] = _h * twopi * this->_w_c * math_impl::tanh(this->_state.lp);
 
-			// I THINK THE PROBLEM IS WITH SCALING, ORDER OF OPERATIONS REGARDING H
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
 			tempstate[1] = this->_state.lp + deriv1[1] / 2;
 
-			np = input - 2 * _resInv * this->_state.bp;
-			hp = np - this->_state.lp;
-			deriv2[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp); // is this the right move?
-			deriv2[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
+			deriv2[0] = _h * twopi * this->_w_c * hp_for_deriv;
+			deriv2[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 
-			np = input - 2 * _resInv * this->_state.bp;
-			hp = np - this->_state.lp;
-			deriv3[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
-			deriv3[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
+			deriv3[0] = _h * twopi * this->_w_c * hp_for_deriv;
+			deriv3[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 
-			np = input - 2 * _resInv * this->_state.bp;
-			hp = np - this->_state.lp;
-			deriv4[0] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(hp);
-			deriv4[1] = _h * (float_t)(2.f*M_PI) * this->_w_c * math_impl::tanh(tempstate[0]);
+			deriv4[0] = _h * twopi * this->_w_c * hp_for_deriv;
+			deriv4[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
@@ -759,7 +815,12 @@ public:
 	}
 	
 	float_t operator()(float_t input) override {
-		filter(input);
+		if (_character == character_e::correct){
+			filter(input);
+		}
+		else if (_character == character_e::wrong){
+			filter_wrong(input);
+		}
 		switch (static_cast<int>(this->_mode)) {
 			case static_cast<int>(mode_e::LP):
 				return this->_outputs.lp;
@@ -789,6 +850,8 @@ private:
 	float_t _h {1.f / (_oversample_factor*44100.f)}, _resInv {1.f};
 	// k_1 through k_4. for each, [0] is bp, [1] is lp.
 	float_t deriv1[2], deriv2[2], deriv3[2], deriv4[2];
+	
+	character_e _character = character_e::correct;
 };
 //=======================================================================
 /*

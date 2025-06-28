@@ -138,34 +138,17 @@ T simple_lfo<T>::multi(T waveform) const {
 	int selector = (int)(floor(waveform));
 	T interpolationAmt = nvs::gen::wrap01(waveform);
 	
-	switch (selector)
-	{
-		case 0:
-		{
-			return linterp<T>(tri(), saw(), interpolationAmt);
-			break;
+	auto const retval = [selector, interpolationAmt, this](){
+		switch (selector) {
+			case 0: { return linterp<T>(tri(), saw(), interpolationAmt); }
+			case 1: { return linterp<T>(saw(), square(), interpolationAmt); }
+			case 2: { return linterp<T>(square(), sine(), interpolationAmt); }
+			case 3: { return sine(); }
+			default: { return 0.f; }
 		}
-		case 1:
-		{
-			return linterp<T>(saw(), square(), interpolationAmt);
-			break;
-		}
-		case 2:
-		{
-			return linterp<T>(square(), sine(), interpolationAmt);
-			break;
-		}
-		case 3:
-		{
-			return sine();
-			break;
-		}
-		default:
-		{
-			return 0.f;
-			break;
-		}
-	}
+	}();
+	assert (retval == retval);
+	return retval;
 }
 template<typename T>
 void simple_lfo<T>::reset(){

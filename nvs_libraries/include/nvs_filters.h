@@ -726,37 +726,38 @@ public:
 		float_t tempstate[2];
 
 		auto constexpr twopi = math_impl::two_pi<float_t>();
+		auto const res_inv = _resInv * 0.09;
 		
 		for (unsigned iter = 0; iter < _oversample_factor; iter++) {
-			np = input - 2 * _resInv * this->_state.bp;
+			np = input - 2 * res_inv * this->_state.bp;
 			hp = np - this->_state.lp;
 			deriv1[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
 			deriv1[1] = _h * twopi * this->_w_c * math_impl::tanh(this->_state.bp);
 			tempstate[0] = this->_state.bp + deriv1[0] / 2;
 			tempstate[1] = this->_state.lp + deriv1[1] / 2;
 			
-			np = input - 2 * _resInv * tempstate[0];
+			np = input - 2 * res_inv * tempstate[0];
 			hp = np - tempstate[1];
 			deriv2[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
 			deriv2[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 			tempstate[0] = this->_state.bp + deriv2[0] / 2;
 			tempstate[1] = this->_state.lp + deriv2[1] / 2;
 			
-			np = input - 2 * _resInv * tempstate[0];
+			np = input - 2 * res_inv * tempstate[0];
 			hp = np - tempstate[1];
 			deriv3[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
 			deriv3[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 			tempstate[0] = this->_state.bp + deriv3[0];
 			tempstate[1] = this->_state.lp + deriv3[1];
 			
-			np = input - 2 * _resInv * tempstate[0];
+			np = input - 2 * res_inv * tempstate[0];
 			hp = np - tempstate[1];
 			deriv4[0] = _h * twopi * this->_w_c * math_impl::tanh(hp);
 			deriv4[1] = _h * twopi * this->_w_c * math_impl::tanh(tempstate[0]);
 			this->_state.bp += (1.f/6.f) * (deriv1[0] + 2 * deriv2[0] + 2 * deriv3[0] + deriv4[0]);
 			this->_state.lp += (1.f/6.f) * (deriv1[1] + 2 * deriv2[1] + 2 * deriv3[1] + deriv4[1]);
 			
-			np = input - 2 * _resInv * this->_state.bp;
+			np = input - 2 * res_inv * this->_state.bp;
 			hp = np - this->_state.lp;
 		}
 		this->_outputs.bp = this->_state.bp;

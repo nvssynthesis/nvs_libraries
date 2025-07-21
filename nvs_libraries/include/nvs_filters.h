@@ -872,7 +872,7 @@ public:
 	void setMode(mode_e) override {
 		// ignore request, always allpass
 		this->_mode = mode_e::AP;
-	};
+	}
 	void clear() override {
 		sp->z1 = sp->z2 = sp->fb_proc = 0.f;
 	}
@@ -1163,10 +1163,10 @@ public:
 	}
 	//============================================================
 	// immediate change
-	void setRise(float_t rise){
-		this->rise = rise;
+	void setRise(float_t r){
+		this->rise = r;
 		this->riseInc = (this->fs_inv * 1000.f) / (this->rise);
-		setRiseTarget(rise);
+		setRiseTarget(r);
 	}
 	void setRiseTarget(float_t rise_target){
 		this->_riseTarget = rise_target;
@@ -1179,10 +1179,10 @@ public:
 		}
 	}
 	// immediate change
-	void setFall(float_t fall){
-		this->fall = fall;
+	void setFall(float_t f){
+		this->fall = f;
 		this->fallInc = (this->fs_inv * 1000.f) / (this->fall);
-		setFallTarget(fall);
+		setFallTarget(f);
 	}
 	void setFallTarget(float_t fall_target){
 		this->_fallTarget = fall_target;

@@ -28,9 +28,24 @@ add_library(
 		nvs_libraries
 		src/lookup_tables.cpp
 )
-target_include_directories(nvs_libraries INTERFACE
+target_include_directories(nvs_libraries
+	SYSTEM INTERFACE
 		${CMAKE_CURRENT_SOURCE_DIR}/include
 		${CMAKE_CURRENT_SOURCE_DIR}/external/sprout
+)
+
+target_compile_options(nvs_libraries INTERFACE
+		$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
+		-Wno-conversion
+		-Wno-sign-conversion
+		-Wno-float-conversion
+		-Wno-double-promotion
+		>
+		$<$<CXX_COMPILER_ID:MSVC>:
+		/wd4244
+		/wd4267
+		/wd4305
+		>
 )
 
 # Check compiler and add constexpr limits

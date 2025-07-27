@@ -195,7 +195,7 @@ public:
 	}
 
 	float_t operator()(float_t input) override {
-		auto lp = tpt_lp(input, {});
+		auto lp = tpt_lp(input);
 		
 		if (this->_mode == mode_e::LP)
 			return lp;
@@ -306,7 +306,7 @@ public:
 		return y_n;
 	}
 	float_t operator()(float_t input) override {
-		return tpt_fourpole(input, {});
+		return tpt_fourpole(input);
 	}
 	float_t operator()(float_t input, float_t cutoff) override
 	{
@@ -407,7 +407,7 @@ public:
 
 		u_n = y_n;  // initial estimation
 		for (auto n = 0U; n < N_iters; n++){
-			float_t tmp = nvs::memoryless::clamp(u_n, -100.f, 100.f);
+			float_t tmp = nvs::memoryless::clamp(static_cast<float_t>(u_n), static_cast<float_t>(-100.0), static_cast<float_t>(100.0));
 			u_n = input - k * (G * memoryless::math_impl::tanh(tmp) + S);
 			assert(u_n == u_n);
 			assert(!isinf(u_n));
@@ -426,7 +426,7 @@ public:
 		return y_n;
 	}
 	float_t operator()(float_t input) override {
-		return tpt_fourpole(input, {});
+		return tpt_fourpole(input);
 	}
 	float_t operator()(float_t input, float_t cutoff) override
 	{
@@ -434,7 +434,7 @@ public:
 		for (auto & p : _poles){
 			p.setCutoff(cutoff);
 		}
-		return tpt_fourpole(input, {});
+		return tpt_fourpole(input);
 	}
 	float_t operator()(float_t input, float_t cutoff, float_t reso) override
 	{

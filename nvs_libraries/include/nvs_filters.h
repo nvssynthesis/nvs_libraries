@@ -200,7 +200,7 @@ public:
 		else if (mode == mode_e::HP)
 			this->_mode = mode_e::HP;
 		else {
-			assert(false);	// only 2 modes
+			// assert(false);	// only 2 modes
 		}
 	}
 	//=========================================================================

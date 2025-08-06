@@ -10,7 +10,7 @@
 
 #pragma once
 #include <type_traits>
-#include "nvs_memoryless.h"
+#include "nvs_fast_math_impl.h"
 #include "nvs_gen.h"
 
 namespace nvs::lfo {

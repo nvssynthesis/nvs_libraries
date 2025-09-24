@@ -30,14 +30,6 @@ public:
 	}
 	void clear() {
 		_buffer.fill(0.f);
-		/*
-		int n = _maxDelSize;
-		while (n > 0)
-		{
-			n -= 1;     // pre-decrement
-			_buffer[n] = 0.f;
-		}
-		 */
 	}
 	void setSampleRate(double fs) {
 		fractionalIdx_t ms = (delTimeSamps / sampleRate) * 1000.0;    // maintain former delay time

@@ -314,13 +314,13 @@ enum class boundsModes_e {
 };
 
 template <typename T, boundsModes_e b=boundsModes_e::clamp>
-T readBuff(T const *data, long index, unsigned long length){
-	assert(length > 0);
+T readBuff(T const *data, long index, const unsigned long length){
+	assert(length > 0 && length < std::numeric_limits<long>::max());
 	if constexpr (b == boundsModes_e::clamp){
-		index = nvs::memoryless::clamp<long>(index, 0, length - 1);
+		index = nvs::memoryless::clamp<long>(index, 0, static_cast<long>(length) - 1);
 	}
 	else if constexpr (b == boundsModes_e::wrap){
-		index = wrap(index, static_cast<long>(length - 1));
+		index = wrap(index, static_cast<long>(length) - 1);
 	}
 	assert(index >= 0);
 	assert(index < length);

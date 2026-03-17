@@ -294,8 +294,9 @@ public:
 	}
 	// Method 2: More accurate transistor differential pair model
 	float_t transistor_1pole_v2(float_t x) {
-		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
+		auto const g = 2 * cutoff_to_g(this->_w_c, this->_fs_inv);
 		using memoryless::math_impl::tanh;
+		// using juce::dsp::FastMathApproximations::tanh;
 
 		// In a real transistor ladder, we need to solve the implicit equation
 		// because the feedback creates a zero-delay loop
@@ -323,8 +324,9 @@ public:
 		return z1;
 	}
 	float_t transistor_1pole_v3(float_t x) {
-		auto const g = cutoff_to_g(this->_w_c, this->_fs_inv);
+		auto const g = 2 * cutoff_to_g(this->_w_c, this->_fs_inv);
 		using memoryless::math_impl::tanh;
+		// using juce::dsp::FastMathApproximations::tanh;
 
 		// Model the transistor pair more explicitly
 		// In analog: I = Is * (tanh(V+/2Vt) - tanh(V-/2Vt))
@@ -557,6 +559,9 @@ public:
 	}
 	void setCutoff(float_t cutoff) override {
 		this->_w_c = cutoff;
+		for (auto &pole : _poles){
+			pole.setCutoff(cutoff);
+		}
 		hp.setCutoff(cutoff / 2.0);
 		setCutoffTarget(cutoff);
 	}
@@ -601,15 +606,17 @@ public:
 		:					(G*G*G) / (1.0+g) * s1 +		// way from https://github.com/xodmk/xodVAFilter/blob/master/xodVAFilter.cpp#L36
 							(G*G) / (1.0+g) * s2 +
 								G / (1.0+g) * s3 +
-								1.0 / (1.0+g) * s4;
+								1 / (1.0+g) * s4;
 		}();
 		float_t k = [q = this->_q, w_c = this->_w_c, fs_inv = this->_fs_inv]() {
 			[[maybe_unused]] float_t k_og = q;	// probably not accurate
 
 			float_t freq_norm = w_c * fs_inv; // normalized frequency
-			[[maybe_unused]] float_t k_freq_dep = q * (1.0f + 2.0f * freq_norm); // increase k at high freq
+			[[maybe_unused]] float_t k_freq_dep_lin = q * (1.0f + 2.0f * freq_norm); // increase k at high freq
+#pragma message("FURTHER TEST FREQ_DEP K NEAR SELF OSCILLATION POINT")
+			[[maybe_unused]] float_t k_freq_dep_pow = q * (1.0f + 1.0 * freq_norm*freq_norm);
 
-			auto _k = k_freq_dep;
+			auto _k = k_freq_dep_pow;
 			if constexpr (iterative_method == IterativeMethod::None) {
 				_k = nvs::memoryless::clamp_high(_k, 4.0);
 			}
@@ -645,10 +652,10 @@ public:
 			if (std::abs(new_u_n - u_n) < 1e-6f) {
 				converged = true;
 				// Debug output occasionally
-				static int counter = 0;
-				if (counter++ % 48000 == 0) {
-					std::cout << "Converged in " << n+1 << " iterations" << std::endl;
-				}
+				// static int counter = 0;
+				// if (counter++ % 48000 == 0) {
+				// 	std::cout << "Converged in " << n+1 << " iterations" << std::endl;
+				// }
 				break;
 			}
 			if (use_lop) {
@@ -795,10 +802,10 @@ private:
 	            u_n = c;
 
 	            // Debug output occasionally
-	            static int counter = 0;
-	            if (counter++ % 48000 == 0) {
-	                std::cout << "Bisection converged in " << n+1 << " iterations" << std::endl;
-	            }
+	            // static int counter = 0;
+	            // if (counter++ % 48000 == 0) {
+	            //     std::cout << "Bisection converged in " << n+1 << " iterations" << std::endl;
+	            // }
 	            break;
 	        }
 

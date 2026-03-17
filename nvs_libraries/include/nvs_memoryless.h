@@ -604,13 +604,11 @@ T padeTanh(T x)
 	if constexpr (PreventDrop){
 		x = clamp(x, T(-5.65), T(5.65));
 	}
+	// use horner's method to reduce multiplies
+	const T xx = x * x;
+	const T num = x * (T(2027025.0) + xx * (T(270270.0) + xx * (T(6930.0) + xx * T(36.0))));
+	const T den = T(2027025.0) + xx * (T(945945.0) + xx * (T(51975.0) + xx * (T(630.0) + xx)));
 	
-	T xx = x * x;
-	T x4 = xx * xx;
-	T x6 = x4 * xx;
-	T x8 = x4 * x4;
-	T num = x*(2027025.0 + 270270.0*xx + 6930.0*x4 + 36.0*x6);
-	T den = 2027025.0 + 945945.0*xx + 51975.0*x4 + 630.0*x6 + x8;
 	return num / den;
 }
 

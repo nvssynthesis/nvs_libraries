@@ -447,7 +447,7 @@ private:
 };
 
 template<FloatingPoint float_t>
-class butterworth2p :   public filter_abstract<float_t>
+class butterworth2p : public filter_abstract<float_t>
 {
 public:
 	butterworth2p() {
@@ -455,21 +455,28 @@ public:
 		A.b = 1.0;
 		B.b = 1.0;
 		D = 0.0;
+		this->_mode = mode_e::LP;
 	}
+	
 	void clear() override {
 		x.a = x.b = 0.f;
 		y = 0.f;
 	}
+	
 	//============================================================
 	virtual void updateCutoff() override {
 		this->filter_abstract<float_t>::updateCutoff();
 		calcCoefs(this->_w_c);
 	}
+	
 	// no altering Q for butterworth
 	virtual void updateResonance() override {}
 	virtual void setResonanceTarget(float_t) override {}
 	
-	virtual void setMode(mode_e) override {}
+	virtual void setMode(mode_e mode) override {
+		this->_mode = mode;
+		updateCutoff();
+	}
 	
 	void calcCoefs(const float_t cutoff){
 		const float_t omega = cutoff_to_g(cutoff, this->_fs_inv);
@@ -477,17 +484,32 @@ public:
 		const float_t twoCosPiOver4xOmega = (float_t)1.414213562373095 * omega;
 		const float_t c = 1.f + twoCosPiOver4xOmega + omega2;
 		
-		const float_t b0 = omega2 / c;
-		const float_t b1 = 2.f * b0;
+		float_t b0, b1, b2;
+		
+		if (this->_mode == mode_e::HP) {
+			// Highpass: numerator is [1, -2, 1]
+			b0 = 1.f / c;
+			b1 = -2.f * b0;
+			b2 = b0;
+		} else {
+			// Lowpass: numerator is [omega^2, 2*omega^2, omega^2]
+			b0 = omega2 / c;
+			b1 = 2.f * b0;
+			b2 = b0;
+		}
+		
+		// Denominator coefficients are the same for both modes
 		const float_t a1 = (2.f * (omega2 - 1.f)) / c;
 		const float_t a2 = (1.f - twoCosPiOver4xOmega + omega2) / c;
 		
+		// Update state-space matrices
 		A.c = -a2;
 		A.d = -a1;
 		C.a = b0 - (a2*b0);
 		C.b = b1 - (a1*b0);
 		D = b0;
 	}
+	
 	virtual float_t operator()(float_t x_n) override {
 		using namespace nvs_matrix;
 		y = vec2::crossProduct(C, x);
@@ -496,12 +518,13 @@ public:
 		
 		return y;
 	}
+	
 	virtual float_t operator()(float_t x_n, float_t cutoff) override {
 		calcCoefs(cutoff);
 		return operator()(x_n);
 	}
-	virtual float_t operator()(float_t x_n, float_t cutoff, float_t) override {
-		/* possible to warn for this functions use? */
+	
+	virtual float_t operator()(float_t x_n, float_t cutoff, float_t /*res*/) override {
 		return operator()(x_n, cutoff);
 	}
 	
